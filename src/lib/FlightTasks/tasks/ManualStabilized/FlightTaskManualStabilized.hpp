@@ -52,17 +52,25 @@ public:
 	bool updateInitialize() override;
 	bool update() override;
 
+	/**
+	 * Sets an external yaw handler which can be used to implement a different yaw control strategy.
+	 */
+	void setYawHandler(WeatherVane *ext_yaw_handler) override {_ext_yaw_handler = ext_yaw_handler;}
+
 protected:
-	virtual void _updateSetpoints(); /**< updates all setpoints*/
+	virtual void _updateSetpoints(); /**< updates all setpoints */
+	void _updateHeadingSetpoints(); /**< sets yaw or yaw speed */
 	virtual void _scaleSticks(); /**< scales sticks to yaw and thrust */
 	void _rotateIntoHeadingFrame(matrix::Vector2f &vec); /**< rotates vector into local frame */
 
 private:
-	void _updateHeadingSetpoints(); /**< sets yaw or yaw speed */
 	void _updateThrustSetpoints(); /**< sets thrust setpoint */
 	float _throttleCurve(); /**< piecewise linear mapping from stick to throttle */
 
 	float _throttle{}; /** mapped from stick z */
+
+	WeatherVane *_ext_yaw_handler =
+		nullptr;	/**< external weathervane library, used to implement a yaw control law that turns the vehicle nose into the wind */
 
 	DEFINE_PARAMETERS_CUSTOM_PARENT(FlightTaskManual,
 					(ParamFloat<px4::params::MPC_MAN_Y_MAX>) _yaw_rate_scaling, /**< scaling factor from stick to yaw rate */

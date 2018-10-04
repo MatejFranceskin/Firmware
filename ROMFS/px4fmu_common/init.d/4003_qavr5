@@ -12,7 +12,7 @@
 
 sh /etc/init.d/4001_quad_x
 
-if [ $AUTOCNF == yes ]
+if [ $AUTOCNF = yes ]
 then
 	param set MC_ROLL_P 8.0
 	param set MC_ROLLRATE_P 0.08
@@ -31,6 +31,6 @@ then
 
 	param set MPC_THR_MIN 0.06
 	param set MPC_MANTHR_MIN 0.06
-	
+
 	param set PWM_MIN 1075
 fi

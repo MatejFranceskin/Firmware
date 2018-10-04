@@ -44,6 +44,7 @@
 #include <px4_defines.h>
 #include <px4_getopt.h>
 #include <px4_module.h>
+#include <px4_cli.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -56,6 +57,12 @@
 #include <poll.h>
 #include <termios.h>
 #include <time.h>
+
+#ifdef CONFIG_NET
+#include <arpa/inet.h>
+#include <netinet/in.h>
+#include <netutils/netlib.h>
+#endif
 
 #include <sys/ioctl.h>
 #include <sys/types.h>
@@ -94,6 +101,12 @@
 // Guard against flow control misconfiguration
 #if defined (CRTSCTS) && defined (__PX4_NUTTX) && (CRTSCTS != (CRTS_IFLOW | CCTS_OFLOW))
 #error The non-standard CRTSCTS define is incorrect. Fix this in the OS or replace with (CRTS_IFLOW | CCTS_OFLOW)
+#endif
+
+#ifdef CONFIG_NET
+#define MAVLINK_NET_ADDED_STACK 350
+#else
+#define MAVLINK_NET_ADDED_STACK 0
 #endif
 
 #define DEFAULT_REMOTE_PORT_UDP			14550 ///< GCS port per MAVLink spec
@@ -236,7 +249,7 @@ Mavlink::Mavlink() :
 	_bytes_txerr(0),
 	_bytes_rx(0),
 	_bytes_timestamp(0),
-#ifdef __PX4_POSIX
+#if defined(CONFIG_NET) || defined(__PX4_POSIX)
 	_myaddr {},
 	_src_addr{},
 	_bcast_addr{},
@@ -669,6 +682,11 @@ int Mavlink::mavlink_open_uart(int baud, const char *uart_name, bool force_flow_
 	case 1500000: speed = B1500000; break;
 #endif
 
+#ifdef B2000000
+
+	case 2000000: speed = B2000000; break;
+#endif
+
 #ifdef B3000000
 
 	case 3000000: speed = B3000000; break;
@@ -887,7 +905,7 @@ Mavlink::send_packet()
 {
 	int ret = -1;
 
-#ifdef __PX4_POSIX
+#if defined(CONFIG_NET) || defined(__PX4_POSIX)
 
 	/* Only send packets if there is something in the buffer. */
 	if (_network_buf_len == 0) {
@@ -897,8 +915,16 @@ Mavlink::send_packet()
 
 	if (get_protocol() == UDP) {
 
-		ret = sendto(_socket_fd, _network_buf, _network_buf_len, 0,
-			     (struct sockaddr *)&_src_addr, sizeof(_src_addr));
+#ifdef CONFIG_NET
+
+		if (_src_addr_initialized) {
+#endif
+			ret = sendto(_socket_fd, _network_buf, _network_buf_len, 0,
+				     (struct sockaddr *)&_src_addr, sizeof(_src_addr));
+#ifdef CONFIG_NET
+		}
+
+#endif
 
 		/* resend message via broadcast if no valid connection exists */
 		if ((_mode != MAVLINK_MODE_ONBOARD) && broadcast_enabled() &&
@@ -971,7 +997,7 @@ Mavlink::send_bytes(const uint8_t *buf, unsigned packet_len)
 		ret = ::write(_uart_fd, buf, packet_len);
 	}
 
-#ifdef __PX4_POSIX
+#if defined(CONFIG_NET) || defined(__PX4_POSIX)
 
 	else {
 		if (_network_buf_len + packet_len < sizeof(_network_buf) / sizeof(_network_buf[0])) {
@@ -1107,6 +1133,49 @@ Mavlink::find_broadcast_address()
 		}
 	}
 
+#elif defined (CONFIG_NET) && defined (__PX4_NUTTX)
+	int ret;
+
+	PX4_INFO("using network interface");
+
+	struct in_addr eth_addr;
+	struct in_addr bc_addr;
+	struct in_addr netmask_addr;
+	ret = netlib_get_ipv4addr("eth0", &eth_addr);
+
+	if (ret != 0) {
+		PX4_ERR("getting network config failed");
+		return;
+	}
+
+	ret = netlib_get_ipv4netmask("eth0", &netmask_addr);
+
+	if (ret != 0) {
+		PX4_ERR("getting network config failed");
+		return;
+	}
+
+	PX4_INFO("ipv4addr IP: %s", inet_ntoa(eth_addr));
+	PX4_INFO("netmask_addr IP: %s", inet_ntoa(netmask_addr));
+
+	bc_addr.s_addr = eth_addr.s_addr | ~(netmask_addr.s_addr);
+
+	if (!_broadcast_address_found) {
+		PX4_INFO("using network interface %s, IP: %s", "eth0", inet_ntoa(eth_addr));
+
+		//struct in_addr &bc_addr = ((struct sockaddr_in *)&bc_ifreq.ifr_broadaddr)->sin_addr;
+		PX4_INFO("with broadcast IP: %s", inet_ntoa(bc_addr));
+
+		_bcast_addr.sin_family = AF_INET;
+		_bcast_addr.sin_addr = bc_addr;
+
+		_broadcast_address_found = true;
+	}
+
+#endif
+
+#if defined (__PX4_LINUX) || defined (__PX4_DARWIN) || (defined (CONFIG_NET) && defined (__PX4_NUTTX))
+
 	if (_broadcast_address_found) {
 		_bcast_addr.sin_port = htons(_remote_port);
 
@@ -1125,7 +1194,9 @@ Mavlink::find_broadcast_address()
 		}
 	}
 
+#if defined (__PX4_LINUX) || defined (__PX4_DARWIN)
 	delete[] ifconf.ifc_req;
+#endif
 
 #endif
 }
@@ -1155,7 +1226,7 @@ Mavlink::compute_broadcast_addr(const in_addr &host_addr, const in_addr &netmask
 void
 Mavlink::init_udp()
 {
-#if defined (__PX4_LINUX) || defined (__PX4_DARWIN) || defined(__PX4_CYGWIN)
+#if defined (__PX4_LINUX) || defined (__PX4_DARWIN) || defined(__PX4_CYGWIN) || defined(CONFIG_NET)
 
 	PX4_DEBUG("Setting up UDP with port %d", _network_port);
 
@@ -1259,6 +1330,13 @@ void Mavlink::send_autopilot_capabilites()
 		board_get_uuid32(uid);
 		msg.uid = (((uint64_t)uid[PX4_CPU_UUID_WORD32_UNIQUE_M]) << 32) | uid[PX4_CPU_UUID_WORD32_UNIQUE_H];
 
+#ifndef BOARD_HAS_NO_UUID
+		px4_guid_t px4_guid;
+		board_get_px4_guid(px4_guid);
+		static_assert(sizeof(px4_guid_t) == sizeof(msg.uid2), "GUID byte length mismatch");
+		memcpy(&msg.uid2, &px4_guid, sizeof(msg.uid2));
+#endif /* BOARD_HAS_NO_UUID */
+
 #ifdef CONFIG_ARCH_BOARD_SITL
 		// To avoid that multiple SITL instances have the same UUID, we add the mavlink
 		// system ID. We subtract 1, so that the first UUID remains unchanged given the
@@ -1266,6 +1344,7 @@ void Mavlink::send_autopilot_capabilites()
 		//
 		// Note that the UUID show in `ver` will still be the same for all instances.
 		msg.uid += mavlink_system.sysid - 1;
+		msg.uid2[0] += mavlink_system.sysid - 1;
 #endif
 		mavlink_msg_autopilot_version_send_struct(get_channel(), &msg);
 	}
@@ -1674,6 +1753,7 @@ Mavlink::configure_streams_to_default(const char *configure_single_stream)
 		configure_stream_local("COLLISION", unlimited_rate);
 		configure_stream_local("DEBUG", 1.0f);
 		configure_stream_local("DEBUG_VECT", 1.0f);
+		configure_stream_local("DEBUG_FLOAT_ARRAY", 1.0f);
 		configure_stream_local("DISTANCE_SENSOR", 0.5f);
 		configure_stream_local("ESTIMATOR_STATUS", 0.5f);
 		configure_stream_local("EXTENDED_SYS_STATE", 1.0f);
@@ -1711,6 +1791,7 @@ Mavlink::configure_streams_to_default(const char *configure_single_stream)
 		configure_stream_local("COLLISION", unlimited_rate);
 		configure_stream_local("DEBUG", 10.0f);
 		configure_stream_local("DEBUG_VECT", 10.0f);
+		configure_stream_local("DEBUG_FLOAT_ARRAY", 10.0f);
 		configure_stream_local("DISTANCE_SENSOR", 10.0f);
 		configure_stream_local("ESTIMATOR_STATUS", 1.0f);
 		configure_stream_local("EXTENDED_SYS_STATE", 5.0f);
@@ -1775,6 +1856,7 @@ Mavlink::configure_streams_to_default(const char *configure_single_stream)
 		configure_stream_local("COLLISION", unlimited_rate);
 		configure_stream_local("DEBUG", 50.0f);
 		configure_stream_local("DEBUG_VECT", 50.0f);
+		configure_stream_local("DEBUG_FLOAT_ARRAY", 50.0f);
 		configure_stream_local("DISTANCE_SENSOR", 10.0f);
 		configure_stream_local("GPS_RAW_INT", unlimited_rate);
 		configure_stream_local("GPS2_RAW", unlimited_rate);
@@ -1858,15 +1940,18 @@ Mavlink::task_main(int argc, char *argv[])
 	bool err_flag = false;
 	int myoptind = 1;
 	const char *myoptarg = nullptr;
-#ifdef __PX4_POSIX
+#if defined(CONFIG_NET) || defined(__PX4_POSIX)
 	char *eptr;
 	int temp_int_arg;
 #endif
 
-	while ((ch = px4_getopt(argc, argv, "b:r:d:n:u:o:m:t:fwxz", &myoptind, &myoptarg)) != EOF) {
+	while ((ch = px4_getopt(argc, argv, "b:r:d:n:u:o:m:t:c:fwxz", &myoptind, &myoptarg)) != EOF) {
 		switch (ch) {
 		case 'b':
-			_baudrate = strtoul(myoptarg, nullptr, 10);
+			if (px4_get_parameter_value(myoptarg, _baudrate) != 0) {
+				PX4_ERR("baudrate parsing failed");
+				err_flag = true;
+			}
 
 			if (_baudrate < 9600 || _baudrate > 3000000) {
 				PX4_ERR("invalid baud rate '%s'", myoptarg);
@@ -1876,9 +1961,12 @@ Mavlink::task_main(int argc, char *argv[])
 			break;
 
 		case 'r':
-			_datarate = strtoul(myoptarg, nullptr, 10);
+			if (px4_get_parameter_value(myoptarg, _datarate) != 0) {
+				PX4_ERR("datarate parsing failed");
+				err_flag = true;
+			}
 
-			if (_datarate < 10 || _datarate > MAX_DATA_RATE) {
+			if (_datarate > MAX_DATA_RATE) {
 				PX4_ERR("invalid data rate '%s'", myoptarg);
 				err_flag = true;
 			}
@@ -1894,7 +1982,7 @@ Mavlink::task_main(int argc, char *argv[])
 			_interface_name = myoptarg;
 			break;
 
-#ifdef __PX4_POSIX
+#if defined(CONFIG_NET) || defined(__PX4_POSIX)
 
 		case 'u':
 			temp_int_arg = strtoul(myoptarg, &eptr, 10);
@@ -1936,6 +2024,29 @@ Mavlink::task_main(int argc, char *argv[])
 			}
 
 			break;
+
+#if defined(CONFIG_NET_IGMP) && defined(CONFIG_NET_ROUTE)
+
+		// multicast
+		case 'c':
+			_src_addr.sin_family = AF_INET;
+
+			if (inet_aton(myoptarg, &_src_addr.sin_addr)) {
+				_src_addr_initialized = true;
+
+			} else {
+				PX4_ERR("invalid partner ip '%s'", myoptarg);
+				err_flag = true;
+			}
+
+			break;
+#else
+
+		case 'c':
+			PX4_ERR("Multicast option is not supported on this platform");
+			err_flag = true;
+			break;
+#endif
 #else
 
 		case 'u':
@@ -1950,35 +2061,54 @@ Mavlink::task_main(int argc, char *argv[])
 //			mavlink_link_termination_allowed = true;
 //			break;
 
-		case 'm':
-			if (strcmp(myoptarg, "custom") == 0) {
-				_mode = MAVLINK_MODE_CUSTOM;
+		case 'm': {
 
-			} else if (strcmp(myoptarg, "camera") == 0) {
-				// left in here for compatibility
-				_mode = MAVLINK_MODE_ONBOARD;
+				int mode;
 
-			} else if (strcmp(myoptarg, "onboard") == 0) {
-				_mode = MAVLINK_MODE_ONBOARD;
+				if (px4_get_parameter_value(myoptarg, mode) == 0) {
+					if (mode >= 0 && mode < (int)MAVLINK_MODE_COUNT) {
+						_mode = (MAVLINK_MODE)mode;
 
-			} else if (strcmp(myoptarg, "osd") == 0) {
-				_mode = MAVLINK_MODE_OSD;
+					} else {
+						PX4_ERR("invalid mode");
+						err_flag = true;
+					}
 
-			} else if (strcmp(myoptarg, "magic") == 0) {
-				_mode = MAVLINK_MODE_MAGIC;
+				} else {
+					if (strcmp(myoptarg, "custom") == 0) {
+						_mode = MAVLINK_MODE_CUSTOM;
 
-			} else if (strcmp(myoptarg, "config") == 0) {
-				_mode = MAVLINK_MODE_CONFIG;
+					} else if (strcmp(myoptarg, "camera") == 0) {
+						// left in here for compatibility
+						_mode = MAVLINK_MODE_ONBOARD;
 
-			} else if (strcmp(myoptarg, "iridium") == 0) {
-				_mode = MAVLINK_MODE_IRIDIUM;
-				set_telemetry_status_type(telemetry_status_s::TELEMETRY_STATUS_RADIO_TYPE_IRIDIUM);
+					} else if (strcmp(myoptarg, "onboard") == 0) {
+						_mode = MAVLINK_MODE_ONBOARD;
 
-			} else if (strcmp(myoptarg, "minimal") == 0) {
-				_mode = MAVLINK_MODE_MINIMAL;
+					} else if (strcmp(myoptarg, "osd") == 0) {
+						_mode = MAVLINK_MODE_OSD;
+
+					} else if (strcmp(myoptarg, "magic") == 0) {
+						_mode = MAVLINK_MODE_MAGIC;
+
+					} else if (strcmp(myoptarg, "config") == 0) {
+						_mode = MAVLINK_MODE_CONFIG;
+
+					} else if (strcmp(myoptarg, "iridium") == 0) {
+						_mode = MAVLINK_MODE_IRIDIUM;
+						set_telemetry_status_type(telemetry_status_s::TELEMETRY_STATUS_RADIO_TYPE_IRIDIUM);
+
+					} else if (strcmp(myoptarg, "minimal") == 0) {
+						_mode = MAVLINK_MODE_MINIMAL;
+
+					} else {
+						PX4_ERR("invalid mode");
+						err_flag = true;
+					}
+				}
+
+				break;
 			}
-
-			break;
 
 		case 'f':
 			_forwarding_on = true;
@@ -2154,6 +2284,14 @@ Mavlink::task_main(int argc, char *argv[])
 
 		if (param_sub->update(&param_time, nullptr)) {
 			mavlink_update_parameters();
+
+#if defined(CONFIG_NET)
+
+			if (_param_broadcast_mode.get() != BROADCAST_MODE_MULTICAST) {
+				_src_addr_initialized = false;
+			}
+
+#endif
 		}
 
 		check_radio_config();
@@ -2615,7 +2753,7 @@ Mavlink::start(int argc, char *argv[])
 	px4_task_spawn_cmd(buf,
 			   SCHED_DEFAULT,
 			   SCHED_PRIORITY_DEFAULT,
-			   2650,
+			   2650 + MAVLINK_NET_ADDED_STACK,
 			   (px4_main_t)&Mavlink::start_helper,
 			   (char *const *)argv);
 
@@ -2886,7 +3024,7 @@ Mavlink::set_boot_complete()
 {
 	_boot_complete = true;
 
-#ifdef __PX4_POSIX
+#if defined(CONFIG_NET) || defined(__PX4_POSIX)
 	Mavlink *inst;
 	LL_FOREACH(::_mavlink_instances, inst) {
 		if ((inst->get_mode() != MAVLINK_MODE_ONBOARD) &&
@@ -2935,9 +3073,9 @@ $ mavlink stream -u 14556 -s HIGHRES_IMU -r 50
 	PRINT_MODULE_USAGE_NAME("mavlink", "communication");
 	PRINT_MODULE_USAGE_COMMAND_DESCR("start", "Start a new instance");
 	PRINT_MODULE_USAGE_PARAM_STRING('d', "/dev/ttyS1", "<file:dev>", "Select Serial Device", true);
-	PRINT_MODULE_USAGE_PARAM_INT('b', 57600, 9600, 3000000, "Baudrate", true);
+	PRINT_MODULE_USAGE_PARAM_INT('b', 57600, 9600, 3000000, "Baudrate (can also be p:<param_name>)", true);
 	PRINT_MODULE_USAGE_PARAM_INT('r', 0, 10, 10000000, "Maximum sending data rate in B/s (if 0, use baudrate / 20)", true);
-#ifdef __PX4_POSIX
+#if defined(CONFIG_NET) || defined(__PX4_POSIX)
 	PRINT_MODULE_USAGE_PARAM_INT('u', 14556, 0, 65536, "Select UDP Network Port (local)", true);
 	PRINT_MODULE_USAGE_PARAM_INT('o', 14550, 0, 65536, "Select UDP Network Port (remote)", true);
 	PRINT_MODULE_USAGE_PARAM_STRING('t', "127.0.0.1", nullptr,
@@ -2946,6 +3084,9 @@ $ mavlink stream -u 14556 -s HIGHRES_IMU -r 50
 	PRINT_MODULE_USAGE_PARAM_STRING('m', "normal", "custom|camera|onboard|osd|magic|config|iridium|minimal",
 					"Mode: sets default streams and rates", true);
 	PRINT_MODULE_USAGE_PARAM_STRING('n', nullptr, "<interface_name>", "wifi/ethernet interface name", true);
+#if defined(CONFIG_NET_IGMP) && defined(CONFIG_NET_ROUTE)
+	PRINT_MODULE_USAGE_PARAM_STRING('c', nullptr, "Multicast address in the range [239.0.0.0,239.255.255.255]", "Multicast address (multicasting can be enabled via MAV_BROADCAST param)", true);
+#endif
 	PRINT_MODULE_USAGE_PARAM_FLAG('f', "Enable message forwarding to other Mavlink instances", true);
 	PRINT_MODULE_USAGE_PARAM_FLAG('w', "Wait to send, until first message received", true);
 	PRINT_MODULE_USAGE_PARAM_FLAG('x', "Enable FTP", true);
@@ -2957,7 +3098,7 @@ $ mavlink stream -u 14556 -s HIGHRES_IMU -r 50
 	PRINT_MODULE_USAGE_ARG("streams", "Print all enabled streams", true);
 
 	PRINT_MODULE_USAGE_COMMAND_DESCR("stream", "Configure the sending rate of a stream for a running instance");
-#ifdef __PX4_POSIX
+#if defined(CONFIG_NET) || defined(__PX4_POSIX)
 	PRINT_MODULE_USAGE_PARAM_INT('u', 0, 0, 65536, "Select Mavlink instance via local Network Port", true);
 #endif
 	PRINT_MODULE_USAGE_PARAM_STRING('d', nullptr, "<file:dev>", "Select Mavlink instance via Serial Device", true);

@@ -1,6 +1,6 @@
 /****************************************************************************
  *
- *   Copyright (c) 2017 PX4 Development Team. All rights reserved.
+ *   Copyright (c) 2018 PX4 Development Team. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -32,11 +32,23 @@
  ****************************************************************************/
 
 /**
- * LeddarOne rangefinder
- *
- * @reboot_required true
- *
- * @boolean
- * @group Sensors
+ * @file px4_cli.h
+ * Helper methods for command-line parameters
  */
-PARAM_DEFINE_INT32(SENS_EN_LEDDAR1, 0);
+
+#pragma once
+
+
+/**
+ * Parse a CLI argument to an integer. There are 2 valid formats:
+ * - 'p:<param_name>'
+ *   in this case the parameter is loaded from an integer parameter
+ * - <int>
+ *   an integer value, so just a string to integer conversion is done
+ * @param option CLI argument
+ * @param value returned value
+ * @return 0 on success, -errno otherwise
+ */
+int px4_get_parameter_value(const char *option, int &value);
+
+

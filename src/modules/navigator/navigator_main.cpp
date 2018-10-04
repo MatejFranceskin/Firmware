@@ -847,7 +847,16 @@ Navigator::get_default_altitude_acceptance_radius()
 		return _param_fw_alt_acceptance_radius.get();
 
 	} else {
-		return _param_mc_alt_acceptance_radius.get();
+		float alt_acceptance_radius = _param_mc_alt_acceptance_radius.get();
+
+		const position_controller_status_s &pos_ctrl_status = _position_controller_status_sub.get();
+
+		if ((pos_ctrl_status.timestamp > _pos_sp_triplet.timestamp)
+		    && pos_ctrl_status.altitude_acceptance > alt_acceptance_radius) {
+			alt_acceptance_radius = pos_ctrl_status.altitude_acceptance;
+		}
+
+		return alt_acceptance_radius;
 	}
 }
 
@@ -944,6 +953,22 @@ Navigator::get_acceptance_radius(float mission_item_radius)
 	}
 
 	return radius;
+}
+
+float
+Navigator::get_yaw_acceptance(float mission_item_yaw)
+{
+	float yaw = mission_item_yaw;
+
+	const position_controller_status_s &pos_ctrl_status = _position_controller_status_sub.get();
+
+	// if yaw_acceptance from position controller is NaN overwrite the mission item yaw such that
+	// the waypoint can be reached from any direction
+	if ((pos_ctrl_status.timestamp > _pos_sp_triplet.timestamp) && !PX4_ISFINITE(pos_ctrl_status.yaw_acceptance)) {
+		yaw = pos_ctrl_status.yaw_acceptance;
+	}
+
+	return yaw;
 }
 
 void

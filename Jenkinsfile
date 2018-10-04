@@ -5,6 +5,32 @@ pipeline {
     stage('Analysis') {
 
       parallel {
+        stage('catkin') {
+          agent {
+            docker {
+              image 'px4io/px4-dev-ros:2018-09-24'
+              args '-e CCACHE_BASEDIR=$WORKSPACE -v ${CCACHE_DIR}:${CCACHE_DIR}:rw -e HOME=$WORKSPACE'
+            }
+          }
+
+          steps {
+            sh 'ls -l'
+            sh '''#!/bin/bash -l
+              echo $0;
+              mkdir -p catkin_ws/src;
+              cp -R . catkin_ws/src/Firmware
+              cd catkin_ws;
+              source /opt/ros/melodic/setup.bash;
+              catkin init;
+              source devel/setup.bash;
+              catkin build -j$(nproc) -l$(nproc);
+            '''
+            sh 'rm -rf catkin_ws'
+          }
+          options {
+            checkoutToSubdirectory('catkin_ws/src/Firmware')
+          }
+        }
 
         stage('Style Check') {
           agent {
@@ -172,6 +198,19 @@ pipeline {
             sh 'make distclean'
             sh 'make shellcheck_all'
             sh 'make distclean'
+          }
+        }
+
+        stage('Module Config Validation') {
+          agent {
+            docker {
+              image 'px4io/px4-dev-base:2018-09-11'
+              args '-e CCACHE_BASEDIR=$WORKSPACE -v ${CCACHE_DIR}:${CCACHE_DIR}:rw'
+            }
+          }
+          steps {
+            sh 'export'
+            sh 'make validate_module_configs'
           }
         }
 
