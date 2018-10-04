@@ -43,6 +43,8 @@
 #include <uORB/topics/position_setpoint_triplet.h>
 #include <uORB/topics/position_setpoint.h>
 #include <uORB/topics/home_position.h>
+#include <uORB/topics/position_controller_status.h>
+#include <uORB/topics/vehicle_status.h>
 #include <lib/ecl/geo/geo.h>
 
 /**
@@ -78,6 +80,11 @@ public:
 	bool activate() override;
 	bool updateInitialize() override;
 
+	/**
+	 * Sets an external yaw handler which can be used to implement a different yaw control strategy.
+	 */
+	void setYawHandler(WeatherVane *ext_yaw_handler) override {_ext_yaw_handler = ext_yaw_handler;}
+
 protected:
 	void _setDefaultConstraints() override;
 	float _getMaxCruiseSpeed() {return MPC_XY_CRUISE.get();} /**< getter for default cruise speed */
@@ -102,13 +109,16 @@ protected:
 					(ParamFloat<px4::params::MPC_XY_CRUISE>) MPC_XY_CRUISE,
 					(ParamFloat<px4::params::MPC_CRUISE_90>) MPC_CRUISE_90, // speed at corner when angle is 90 degrees move to line
 					(ParamFloat<px4::params::NAV_ACC_RAD>) NAV_ACC_RAD, // acceptance radius at which waypoints are updated move to line
-					(ParamInt<px4::params::MPC_YAW_MODE>) MPC_YAW_MODE // defines how heading is executed
+					(ParamFloat<px4::params::NAV_MC_ALT_RAD>) NAV_MC_ALT_RAD, //vertical acceptance radius at which waypoints are updated
+					(ParamInt<px4::params::MPC_YAW_MODE>) MPC_YAW_MODE, // defines how heading is executed,
+					(ParamInt<px4::params::MPC_OBS_AVOID>) MPC_OBS_AVOID // obstacle avoidance active
 				       );
 
 private:
 	matrix::Vector2f _lock_position_xy{NAN, NAN}; /**< if no valid triplet is received, lock positition to current position */
 	bool _yaw_lock = false; /**< if within acceptance radius, lock yaw to current yaw */
 	uORB::Subscription<position_setpoint_triplet_s> *_sub_triplet_setpoint{nullptr};
+	uORB::Subscription<vehicle_status_s> *_sub_vehicle_status{nullptr};
 
 	matrix::Vector3f
 	_triplet_target; /**< current triplet from navigator which may differ from the intenal one (_target) depending on the vehicle state. */
@@ -122,10 +132,16 @@ private:
 	float _reference_altitude = NAN;  /**< Altitude relative to ground. */
 	hrt_abstime _time_stamp_reference = 0; /**< time stamp when last reference update occured. */
 
+	WeatherVane *_ext_yaw_handler =
+		nullptr;	/**< external weathervane library, used to implement a yaw control law that turns the vehicle nose into the wind */
+
+	orb_advert_t _pub_pos_control_status = nullptr; /**< Publisher for the position controller status */
+
 	bool _evaluateTriplets(); /**< Checks and sets triplets. */
 	bool _isFinite(const position_setpoint_s &sp); /**< Checks if all waypoint triplets are finite. */
 	bool _evaluateGlobalReference(); /**< Check is global reference is available. */
 	float _getVelocityFromAngle(const float angle); /**< Computes the speed at target depending on angle. */
 	State _getCurrentState(); /**< Computes the current vehicle state based on the vehicle position and navigator triplets. */
 	void _set_heading_from_mode(); /**< @see  MPC_YAW_MODE */
+	void _checkAvoidanceProgress();
 };

@@ -5,6 +5,9 @@
 # NOTE: Script variables are declared/initialized/unset in the rcS script.
 #
 
+set BOARD_FMUV3 0
+
+
 ###############################################################################
 #               Begin Setup for board specific configurations.                #
 ###############################################################################
@@ -105,6 +108,20 @@ then
 
 fi
 
+if ver hwcmp MINDPX_V2
+then
+	# External I2C bus
+	hmc5883 -C -T -X start
+
+	# Internal I2C bus
+	hmc5883 -C -T -I -R 12 start
+
+	mpu6000 -s -R 8 start
+	mpu9250 -s -R 8 start
+	lsm303d -R 10 start
+	l3gd20 -R 14 start
+fi
+
 if ver hwcmp NXPHLITE_V3
 then
 	# External I2C bus
@@ -123,8 +140,21 @@ then
 	fxas21002c start -R 0
 fi
 
-# V2 build hwtypecmp is always false
-set BOARD_FMUV3 0
+if ver hwcmp OMNIBUS_F4SD
+then
+	if ! mpu6000 -R 12 -s start
+	then
+		# some boards such as the Hobbywing XRotor F4 G2 use the ICM-20602
+		mpu6000 -R 12 -T 20602 -s start
+	fi
+
+	# Possible external compasses
+	hmc5883 -X start
+
+	bmp280 start
+
+	adc start
+fi
 
 if ver hwcmp PX4FMU_V2
 then
@@ -188,7 +218,7 @@ then
 		# external LSM303D is rotated 270 degrees yaw
 		lsm303d -X -R 6 start
 
-		if [ $BOARD_FMUV3 == 20 ]
+		if [ $BOARD_FMUV3 = 20 ]
 		then
 			# v2.0 internal MPU6000 is rotated 180 deg roll, 270 deg yaw
 			mpu6000 -R 14 start
@@ -197,14 +227,14 @@ then
 			hmc5883 -C -T -S -R 8 start
 		fi
 
-		if [ $BOARD_FMUV3 == 21 ]
+		if [ $BOARD_FMUV3 = 21 ]
 		then
 			# v2.1 internal MPU9250 is rotated 180 deg roll, 270 deg yaw
 			mpu9250 -R 14 start
 		fi
 
 	else
-		# $BOARD_FMUV3 == 0 -> FMUv2
+		# $BOARD_FMUV3 = 0 -> FMUv2
 
 		mpu6000 start
 
@@ -220,15 +250,6 @@ then
 		l3gd20 start
 		lsm303d start
 	fi
-fi
-
-if ver hwcmp PX4_SAME70XPLAINED_V1
-then
-	# External I2C bus
-	hmc5883 -C -T -X start
-
-	# Internal SPI bus mpu9250 is rotated 90 deg yaw
-	mpu9250 -R 2 start
 fi
 
 if ver hwcmp PX4FMU_V4
@@ -279,36 +300,6 @@ then
 	fi
 fi
 
-if ver hwcmp MINDPX_V2
-then
-	# External I2C bus
-	hmc5883 -C -T -X start
-
-	# Internal I2C bus
-	hmc5883 -C -T -I -R 12 start
-
-	mpu6000 -s -R 8 start
-	mpu9250 -s -R 8 start
-	lsm303d -R 10 start
-	l3gd20 -R 14 start
-fi
-
-if ver hwcmp OMNIBUS_F4SD
-then
-	if ! mpu6000 -R 12 -s start
-	then
-		# some boards such as the Hobbywing XRotor F4 G2 use the ICM-20602
-		mpu6000 -R 12 -T 20602 -s start
-	fi
-
-	# Possible external compasses
-	hmc5883 -X start
-
-	bmp280 start
-
-	adc start
-fi
-
 if ver hwcmp PX4FMU_V4PRO
 then
 	# Internal SPI bus ICM-20608-G
@@ -349,12 +340,20 @@ then
 	hmc5883 -C -T -X start
 
 	# Possible external compasses
-
 	ist8310 -C -b 1 start
 	ist8310 -C -b 2 start
 
 	# Possible internal compass
 	ist8310 -C -b 5 start
+fi
+
+if ver hwcmp PX4_SAME70XPLAINED_V1
+then
+	# External I2C bus
+	hmc5883 -C -T -X start
+
+	# Internal SPI bus mpu9250 is rotated 90 deg yaw
+	mpu9250 -R 2 start
 fi
 
 ###############################################################################
@@ -365,7 +364,7 @@ fi
 #                           Begin Optional drivers                            #
 ###############################################################################
 
-if [ ${VEHICLE_TYPE} == fw -o ${VEHICLE_TYPE} == vtol ]
+if [ ${VEHICLE_TYPE} = fw -o ${VEHICLE_TYPE} = vtol ]
 then
 	if param compare CBRK_AIRSPD_CHK 0
 	then
@@ -375,7 +374,7 @@ then
 		# detected as MS5525 because the chip manufacturer was so
 		# clever to assign the same I2C address and skip a WHO_AM_I
 		# register.
-		if [ $BOARD_FMUV3 == 21 ]
+		if [ $BOARD_FMUV3 = 21 ]
 		then
 			ms5525_airspeed start -b 2
 		else
@@ -387,12 +386,6 @@ then
 		ets_airspeed start -a
 
 	fi
-fi
-
-# Heater driver for temperature regulated IMUs.
-if param compare SENS_EN_THERMAL 1
-then
-	heater start
 fi
 
 # Sensors on the PWM interface bank
@@ -410,16 +403,16 @@ then
 	ll40ls start i2c
 fi
 
+# mb12xx sonar sensor
+if param greater SENS_EN_MB12XX 0
+then
+	mb12xx start -a
+fi
+
 # pga460 sonar sensor
 if param greater SENS_EN_PGA460 0
 then
 	pga460 start
-fi
-
-# Lightware serial lidar sensor
-if param greater SENS_EN_SF0X 0
-then
-	sf0x start
 fi
 
 # Lightware i2c lidar sensor
@@ -428,59 +421,16 @@ then
 	sf1xx start -a
 fi
 
-# mb12xx sonar sensor
-if param greater SENS_EN_MB12XX 0
+# Heater driver for temperature regulated IMUs.
+if param compare SENS_EN_THERMAL 1
 then
-	mb12xx start -a
+	heater start
 fi
 
 # Teraranger one tof sensor
 if param greater SENS_EN_TRANGER 0
 then
 	teraranger start -a
-fi
-
-# Benewake TFMini
-if param greater SENS_EN_TFMINI 0
-then
-	if ver hwcmp PX4FMU_V2 PX4FMU_V4PRO
-	then
-		# start the driver on serial 4/5
-		tfmini start -d /dev/ttyS6
-	else
-		if ver hwcmp AEROFC_V1
-		then
-			# start the driver on telemetry
-			tfmini start -d /dev/ttyS3
-		else
-			if param compare SYS_COMPANION 0
-			then
-				# start on default mavlink companion device
-				tfmini start -d /dev/ttyS2
-			fi
-		fi
-	fi
-fi
-
-# LeddarOne
-if param greater SENS_EN_LEDDAR1 0
-then
-	if ver hwcmp PX4FMU_V2 PX4FMU_V4PRO
-	then
-		# start the driver on serial 4/5
-		leddar_one -d /dev/ttyS6 start
-	fi
-	if ver hwcmp AEROFC_V1
-	then
-		# start the driver on telemetry
-		leddar_one -d /dev/ttyS3 start
-	else
-		if param compare SYS_COMPANION 0
-		then
-			# start on default mavlink companion device
-			leddar_one -d /dev/ttyS2 start
-		fi
-	fi
 fi
 
 ###############################################################################

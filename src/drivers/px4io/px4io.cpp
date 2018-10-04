@@ -335,7 +335,7 @@ private:
 	 * @param input_rc	Input structure to populate.
 	 * @return		OK if data was returned.
 	 */
-	int			io_get_raw_rc_input(rc_input_values &input_rc);
+	int			io_get_raw_rc_input(input_rc_s &input_rc);
 
 	/**
 	 * Fetch and publish raw RC input data.
@@ -1742,7 +1742,7 @@ PX4IO::io_get_status()
 }
 
 int
-PX4IO::io_get_raw_rc_input(rc_input_values &input_rc)
+PX4IO::io_get_raw_rc_input(input_rc_s &input_rc)
 {
 	uint32_t channel_count;
 	int	ret;
@@ -1849,7 +1849,7 @@ PX4IO::io_publish_raw_rc()
 {
 
 	/* fetch values from IO */
-	rc_input_values	rc_val;
+	input_rc_s	rc_val;
 
 	/* set the RC status flag ORDER MATTERS! */
 	rc_val.rc_lost = !(_status & PX4IO_P_STATUS_FLAGS_RC_OK);
@@ -2962,7 +2962,7 @@ start(int argc, char *argv[])
 
 	if (g_dev == nullptr) {
 		delete interface;
-		errx(1, "driver alloc failed");
+		errx(1, "driver allocation failed");
 	}
 
 	bool rc_handling_disabled = false;
@@ -3001,7 +3001,7 @@ detect(int argc, char *argv[])
 	(void)new PX4IO(interface);
 
 	if (g_dev == nullptr) {
-		errx(1, "driver alloc failed");
+		errx(1, "driver allocation failed");
 	}
 
 	int ret = g_dev->detect();
@@ -3031,7 +3031,7 @@ checkcrc(int argc, char *argv[])
 		(void)new PX4IO(interface);
 
 		if (g_dev == nullptr) {
-			errx(1, "driver alloc failed");
+			errx(1, "driver allocation failed");
 		}
 
 	} else {
@@ -3455,7 +3455,7 @@ px4io_main(int argc, char *argv[])
 
 			if (g_dev == nullptr) {
 				delete interface;
-				errx(1, "driver alloc failed");
+				errx(1, "driver allocation failed");
 			}
 		}
 

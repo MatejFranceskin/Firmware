@@ -88,12 +88,18 @@ void FlightTaskManualStabilized::_updateHeadingSetpoints()
 			}
 		}
 	}
+
+	// check if an external yaw handler is active and if yes, let it compute the yaw setpoints
+	if (_ext_yaw_handler != nullptr && _ext_yaw_handler->is_active()) {
+		_yaw_setpoint = NAN;
+		_yawspeed_setpoint += _ext_yaw_handler->get_weathervane_yawrate();
+	}
 }
 
 void FlightTaskManualStabilized::_updateThrustSetpoints()
 {
 	/* Rotate setpoint into local frame. */
-	Vector2f sp{_sticks(0), _sticks(1)};
+	Vector2f sp(&_sticks(0));
 	_rotateIntoHeadingFrame(sp);
 
 	/* Ensure that maximum tilt is in [0.001, Pi] */
@@ -117,9 +123,10 @@ void FlightTaskManualStabilized::_updateThrustSetpoints()
 
 	/* The final thrust setpoint is found by rotating the scaled unit vector pointing
 	 * upward by the Axis-Angle.
+	 * Make sure that the attitude can be controlled even at 0 throttle.
 	 */
 	Quatf q_sp = AxisAnglef(v(0), v(1), 0.0f);
-	_thrust_setpoint = q_sp.conjugate(Vector3f(0.0f, 0.0f, -1.0f)) * _throttle;
+	_thrust_setpoint = q_sp.conjugate(Vector3f(0.0f, 0.0f, -1.0f)) * math::max(_throttle, 0.0001f);
 }
 
 void FlightTaskManualStabilized::_rotateIntoHeadingFrame(Vector2f &v)
