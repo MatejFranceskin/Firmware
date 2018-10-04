@@ -125,6 +125,8 @@ MavlinkReceiver::MavlinkReceiver(Mavlink *parent) :
 	_hil_distance_sensor_pub(nullptr),
 	_flow_distance_sensor_pub(nullptr),
 	_distance_sensor_pub(nullptr),
+	_terrain_data_pub(nullptr),
+	_terrain_check_pub(nullptr),
 	_offboard_control_mode_pub(nullptr),
 	_actuator_controls_pubs{nullptr, nullptr, nullptr, nullptr},
 	_att_sp_pub(nullptr),
@@ -273,6 +275,14 @@ MavlinkReceiver::handle_message(mavlink_message_t *msg)
 	case MAVLINK_MSG_ID_DISTANCE_SENSOR:
 		handle_message_distance_sensor(msg);
 		break;
+
+    case MAVLINK_MSG_ID_TERRAIN_DATA:
+        handle_message_terrain_data(msg);
+        break;
+
+    case MAVLINK_MSG_ID_TERRAIN_CHECK:
+        handle_message_terrain_check(msg);
+        break;
 
 	case MAVLINK_MSG_ID_FOLLOW_TARGET:
 		handle_message_follow_target(msg);
@@ -823,6 +833,52 @@ MavlinkReceiver::handle_message_distance_sensor(mavlink_message_t *msg)
 
 	} else {
 		orb_publish(ORB_ID(distance_sensor), _distance_sensor_pub, &d);
+	}
+}
+
+void
+MavlinkReceiver::handle_message_terrain_data(mavlink_message_t *msg)
+{
+    mavlink_terrain_data_t terrain_data;
+	mavlink_msg_terrain_data_decode(msg, &terrain_data);
+
+	struct terrain_data_s d;
+	memset(&d, 0, sizeof(d));
+
+    d.lat = terrain_data.lat;
+    d.lon = terrain_data.lon;
+    d.grid_spacing = terrain_data.grid_spacing;
+    for (int i = 0; i<16; i++)
+        d.data[i] = terrain_data.data[i];
+    d.grid_bit = terrain_data.gridbit;
+
+	if (_terrain_data_pub == nullptr) {
+		_terrain_data_pub = orb_advertise_multi(ORB_ID(terrain_data), &d,
+				       &_orb_class_instance, ORB_PRIO_HIGH);
+
+	} else {
+		orb_publish(ORB_ID(terrain_data), _terrain_data_pub, &d);
+	}
+}
+
+void
+MavlinkReceiver::handle_message_terrain_check(mavlink_message_t *msg)
+{
+    mavlink_terrain_check_t terrain_check;
+	mavlink_msg_terrain_check_decode(msg, &terrain_check);
+
+	struct terrain_check_s d;
+	memset(&d, 0, sizeof(d));
+
+    d.lat = terrain_check.lat;
+    d.lon = terrain_check.lon;
+
+	if (_terrain_check_pub == nullptr) {
+		_terrain_check_pub = orb_advertise_multi(ORB_ID(terrain_check), &d,
+				       &_orb_class_instance, ORB_PRIO_HIGH);
+
+	} else {
+		orb_publish(ORB_ID(terrain_check), _terrain_check_pub, &d);
 	}
 }
 

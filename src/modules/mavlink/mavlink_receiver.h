@@ -67,6 +67,8 @@
 #include <uORB/topics/rc_channels.h>
 #include <uORB/topics/sensor_combined.h>
 #include <uORB/topics/vehicle_trajectory_waypoint.h>
+#include <uORB/topics/terrain_data.h>
+#include <uORB/topics/terrain_check.h>
 #include <uORB/topics/transponder_report.h>
 #include <uORB/topics/telemetry_status.h>
 #include <uORB/topics/vehicle_control_mode.h>
@@ -146,6 +148,8 @@ private:
 	void handle_message_hil_gps(mavlink_message_t *msg);
 	void handle_message_hil_state_quaternion(mavlink_message_t *msg);
 	void handle_message_distance_sensor(mavlink_message_t *msg);
+    void handle_message_terrain_data(mavlink_message_t *msg);
+    void handle_message_terrain_check(mavlink_message_t *msg);
 	void handle_message_follow_target(mavlink_message_t *msg);
 	void handle_message_landing_target(mavlink_message_t *msg);
 	void handle_message_adsb_vehicle(mavlink_message_t *msg);
@@ -221,6 +225,8 @@ private:
 	orb_advert_t _hil_distance_sensor_pub;
 	orb_advert_t _flow_distance_sensor_pub;
 	orb_advert_t _distance_sensor_pub;
+	orb_advert_t _terrain_data_pub;
+	orb_advert_t _terrain_check_pub;
 	orb_advert_t _offboard_control_mode_pub;
 	orb_advert_t _actuator_controls_pubs[4];
 	orb_advert_t _att_sp_pub;

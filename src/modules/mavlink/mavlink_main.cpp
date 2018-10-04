@@ -1236,6 +1236,7 @@ void Mavlink::send_autopilot_capabilites()
 		msg.capabilities |= MAV_PROTOCOL_CAPABILITY_MAVLINK2;
 		msg.capabilities |= MAV_PROTOCOL_CAPABILITY_MISSION_FENCE;
 		msg.capabilities |= MAV_PROTOCOL_CAPABILITY_MISSION_RALLY;
+		msg.capabilities |= MAV_PROTOCOL_CAPABILITY_TERRAIN;
 		msg.flight_sw_version = px4_firmware_version();
 		msg.middleware_sw_version = px4_firmware_version();
 		msg.os_sw_version = px4_os_version();

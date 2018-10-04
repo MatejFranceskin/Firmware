@@ -109,6 +109,10 @@ set(msg_files
 	tecs_status.msg
 	telemetry_status.msg
 	test_motor.msg
+    terrain_check.msg
+    terrain_data.msg
+    terrain_report.msg
+    terrain_request.msg
 	timesync_status.msg
 	trajectory_waypoint.msg
 	transponder_report.msg
