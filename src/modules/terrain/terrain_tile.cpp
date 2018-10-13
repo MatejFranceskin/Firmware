@@ -42,22 +42,15 @@
 #include <limits>
 #include "terrain_tile.h"
 
-TerrainTile::TerrainTile(int _lati, int _lngi, int _lat_offset, int _lng_offset)
-{
-    lati = _lati;
-    lngi = _lngi;
-    lat_offset = _lat_offset;
-    lng_offset = _lng_offset;
-    mask = MASK_ALL;
-}
-
 float
-TerrainTile::get_elevation(int _lati, int _lngi, int _lat_offset, int _lng_offset)
+TerrainTile::get_elevation(int _latd, int _lond, int _lat_offset, int _lon_offset)
 {
-    if (valid() && matches(_lati, _lngi, _lat_offset, _lng_offset))
+    int lato = _lat_offset - lat_offset;
+    int lono = _lon_offset - lon_offset;
+    if (valid() && matches(_latd, _lond, lato, lono))
     {
         access_timestamp = hrt_absolute_time();
-        return elevations[_lat_offset - lat_offset][_lng_offset - lng_offset];
+        return elevations[lato][lono];
     }
 
     return std::numeric_limits<float>::quiet_NaN();

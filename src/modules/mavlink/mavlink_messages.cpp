@@ -81,6 +81,8 @@
 #include <uORB/topics/sensor_bias.h>
 #include <uORB/topics/tecs_status.h>
 #include <uORB/topics/telemetry_status.h>
+#include <uORB/topics/terrain_report.h>
+#include <uORB/topics/terrain_request.h>
 #include <uORB/topics/transponder_report.h>
 #include <uORB/topics/vehicle_attitude.h>
 #include <uORB/topics/vehicle_attitude_setpoint.h>
@@ -4578,6 +4580,144 @@ protected:
 	}
 };
 
+class MavlinkStreamTerrainRequest : public MavlinkStream
+{
+public:
+	const char *get_name() const
+	{
+		return MavlinkStreamTerrainRequest::get_name_static();
+	}
+
+	static const char *get_name_static()
+	{
+		return "TERRAIN_REQUEST";
+	}
+
+	static uint16_t get_id_static()
+	{
+		return MAVLINK_MSG_ID_TERRAIN_REQUEST;
+	}
+
+	uint16_t get_id()
+	{
+		return get_id_static();
+	}
+
+	static MavlinkStream *new_instance(Mavlink *mavlink)
+	{
+		return new MavlinkStreamTerrainRequest(mavlink);
+	}
+
+	unsigned get_size()
+	{
+		return MAVLINK_MSG_ID_TERRAIN_REQUEST_LEN + MAVLINK_NUM_NON_PAYLOAD_BYTES;
+	}
+
+private:
+	MavlinkOrbSubscription *_terrain_request_sub;
+
+	/* do not allow top copying this class */
+	MavlinkStreamTerrainRequest(MavlinkStreamTerrainRequest &) = delete;
+	MavlinkStreamTerrainRequest &operator = (const MavlinkStreamTerrainRequest &) = delete;
+
+protected:
+	explicit MavlinkStreamTerrainRequest(Mavlink *mavlink) : MavlinkStream(mavlink),
+		_terrain_request_sub(_mavlink->add_orb_subscription(ORB_ID(terrain_request)))
+	{}
+
+	bool send(const hrt_abstime t)
+	{
+		terrain_request_s terrain_request;
+
+		if (_terrain_request_sub->update_if_changed(&terrain_request)) {
+
+            mavlink_terrain_request_t msg = {};
+
+			msg.mask = terrain_request.mask;
+            msg.lat = terrain_request.lat;
+            msg.lon = terrain_request.lon;
+            msg.grid_spacing = terrain_request.grid_spacing;
+
+            PX4_INFO("Send Terrain Request %d", t);
+
+            mavlink_msg_terrain_request_send_struct(_mavlink->get_channel(), &msg);
+
+			return true;
+		}
+
+		return false;
+	}
+};
+
+class MavlinkStreamTerrainReport : public MavlinkStream
+{
+public:
+	const char *get_name() const
+	{
+		return MavlinkStreamTerrainReport::get_name_static();
+	}
+
+	static const char *get_name_static()
+	{
+		return "TERRAIN_REPORT";
+	}
+
+	static uint16_t get_id_static()
+	{
+		return MAVLINK_MSG_ID_TERRAIN_REPORT;
+	}
+
+	uint16_t get_id()
+	{
+		return get_id_static();
+	}
+
+	static MavlinkStream *new_instance(Mavlink *mavlink)
+	{
+		return new MavlinkStreamTerrainReport(mavlink);
+	}
+
+	unsigned get_size()
+	{
+		return MAVLINK_MSG_ID_TERRAIN_REPORT_LEN + MAVLINK_NUM_NON_PAYLOAD_BYTES;
+	}
+
+private:
+	MavlinkOrbSubscription *_terrain_report_sub;
+
+	/* do not allow top copying this class */
+	MavlinkStreamTerrainReport(MavlinkStreamTerrainReport &) = delete;
+	MavlinkStreamTerrainReport &operator = (const MavlinkStreamTerrainReport &) = delete;
+
+protected:
+	explicit MavlinkStreamTerrainReport(Mavlink *mavlink) : MavlinkStream(mavlink),
+		_terrain_report_sub(_mavlink->add_orb_subscription(ORB_ID(terrain_report)))
+	{}
+
+	bool send(const hrt_abstime t)
+	{
+		terrain_report_s terrain_report;
+
+		if (_terrain_report_sub->update_if_changed(&terrain_report)) {
+
+            mavlink_terrain_report_t msg = {};
+
+            msg.lat = terrain_report.lat;
+            msg.lon = terrain_report.lon;
+            msg.terrain_height = terrain_report.terrain_height;
+            msg.current_height = terrain_report.current_height;
+            msg.spacing = terrain_report.spacing;
+            msg.pending = terrain_report.pending;
+            msg.loaded = terrain_report.loaded;
+            mavlink_msg_terrain_report_send_struct(_mavlink->get_channel(), &msg);
+
+			return true;
+		}
+
+		return false;
+	}
+};
+
 static const StreamListItem streams_list[] = {
 	StreamListItem(&MavlinkStreamHeartbeat::new_instance, &MavlinkStreamHeartbeat::get_name_static, &MavlinkStreamHeartbeat::get_id_static),
 	StreamListItem(&MavlinkStreamStatustext::new_instance, &MavlinkStreamStatustext::get_name_static, &MavlinkStreamStatustext::get_id_static),
@@ -4634,7 +4774,9 @@ static const StreamListItem streams_list[] = {
 	StreamListItem(&MavlinkStreamMountOrientation::new_instance, &MavlinkStreamMountOrientation::get_name_static, &MavlinkStreamMountOrientation::get_id_static),
 	StreamListItem(&MavlinkStreamHighLatency2::new_instance, &MavlinkStreamHighLatency2::get_name_static, &MavlinkStreamHighLatency2::get_id_static),
 	StreamListItem(&MavlinkStreamGroundTruth::new_instance, &MavlinkStreamGroundTruth::get_name_static, &MavlinkStreamGroundTruth::get_id_static),
-	StreamListItem(&MavlinkStreamPing::new_instance, &MavlinkStreamPing::get_name_static, &MavlinkStreamPing::get_id_static)
+	StreamListItem(&MavlinkStreamPing::new_instance, &MavlinkStreamPing::get_name_static, &MavlinkStreamPing::get_id_static),
+	StreamListItem(&MavlinkStreamTerrainRequest::new_instance, &MavlinkStreamTerrainRequest::get_name_static, &MavlinkStreamTerrainRequest::get_id_static),
+	StreamListItem(&MavlinkStreamTerrainReport::new_instance, &MavlinkStreamTerrainReport::get_name_static, &MavlinkStreamTerrainReport::get_id_static)
 };
 
 const char *get_stream_name(const uint16_t msg_id)

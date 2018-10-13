@@ -53,24 +53,23 @@
 class TerrainTile
 {
 public:
-    float lat;
-    float lng;
+    int32_t lat;
+    int32_t lon;
+    int lat_offset;
+    int lon_offset;
 
-	TerrainTile(int _lati, int _lngi, int _lat_offset, int _lng_offset);
+	TerrainTile(int _latd, int _lond, int _lat_offset, int _lon_offset)
+    {
+        latd = _latd;
+        lond = _lond;
+        lat_offset = round_down(_lat_offset, TILE_4X4_HEIGHT);
+        lon_offset = round_down(_lon_offset, TILE_4X4_WIDTH);
+        mask = MASK_ALL;
+    }
 
     static int get_coord_deg(float coord)
     {
         return (coord < 0) ? (int)coord-1 : (int)coord;
-    }
-
-    int32_t get_lat()
-    {
-        return (int32_t)(1.0E7f * lat);
-    }
-
-    int32_t get_lng()
-    {
-        return (int32_t)(1.0E7f * lng);
     }
 
     bool valid()
@@ -83,18 +82,23 @@ public:
         return mask;
     }
 
-    float get_elevation(int _lati, int _lngi, int _lat_offset, int _lng_offset);
+    float get_elevation(int _latd, int _lond, int _lat_offset, int _lon_offset);
 
     bool load();
 
     bool save();
 
-    bool matches(int _lati, int _lngi, int _lat_offset, int _lng_offset)
+    bool matches(TerrainTile &t)
     {
-        return
-            lati == _lati && lngi == _lngi && 
-            lat_offset == _lat_offset - _lat_offset % matrix_width &&
-            lng_offset == _lng_offset - _lng_offset % matrix_height;
+        return latd == t.latd && lond == t.lond && lat_offset == t.lat_offset && lon_offset == t.lon_offset;
+    }
+
+    bool matches(int _latd, int _lond, int _lat_offset_diff, int _lon_offset_diff)
+    {
+        return 
+            latd == _latd && lond == _lond && 
+            _lat_offset_diff > 0 && _lat_offset_diff < matrix_height &&
+            _lon_offset_diff > 0 && _lon_offset_diff < matrix_width;
     }
 
     bool set_terrain_data(uint8_t grid_bit, int16_t *data);
@@ -103,10 +107,8 @@ private:
     static const int matrix_width = TILE_4X4_WIDTH * 4;
     static const int matrix_height = TILE_4X4_HEIGHT * 4;
 
-    int lati;
-    int lngi;
-    int lat_offset;
-    int lng_offset;
+    int latd;
+    int lond;
     uint64_t mask;
 
     hrt_abstime access_timestamp;
@@ -116,7 +118,13 @@ private:
     std::string get_file_name()
     {
         std::ostringstream oss;
-        oss << PX4_STORAGEDIR"/terrain/" << lati << "_" << lat_offset << "-" << lngi << "_" << lng_offset;
+        oss << PX4_STORAGEDIR"/terrain/" << latd << "_" << lat_offset << "-" << lond << "_" << lon_offset;
         return oss.str();
+    }
+
+    int round_down(int num, int multiple) 
+    {
+        int is_negative = (num < 0);
+        return ((num - is_negative * (multiple - 1)) / multiple) * multiple;
     }
 };

@@ -1307,7 +1307,7 @@ void Mavlink::send_autopilot_capabilites()
 		msg.capabilities |= MAV_PROTOCOL_CAPABILITY_MAVLINK2;
 		msg.capabilities |= MAV_PROTOCOL_CAPABILITY_MISSION_FENCE;
 		msg.capabilities |= MAV_PROTOCOL_CAPABILITY_MISSION_RALLY;
-		msg.capabilities |= MAV_PROTOCOL_CAPABILITY_TERRAIN;
+//        msg.capabilities |= MAV_PROTOCOL_CAPABILITY_TERRAIN;
 		msg.flight_sw_version = px4_firmware_version();
 		msg.middleware_sw_version = px4_firmware_version();
 		msg.os_sw_version = px4_os_version();
@@ -2238,6 +2238,11 @@ Mavlink::task_main(int argc, char *argv[])
 		/* COMMAND_LONG stream: use unlimited rate to send all commands */
 		configure_stream("COMMAND_LONG");
 
+		/* TERRAIN_REQUEST stream: use unlimited rate to send all requests */
+		configure_stream("TERRAIN_REQUEST");
+
+		/* TERRAIN_REPORT stream: use unlimited rate to send all reports */
+		configure_stream("TERRAIN_REPORT");
 	}
 
 	if (configure_streams_to_default() != 0) {

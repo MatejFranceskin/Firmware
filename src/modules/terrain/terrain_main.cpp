@@ -63,12 +63,7 @@
 
 using namespace time_literals;
 
-#define SCHEDULE_INTERVAL	100000	/**< The schedule interval in usec (10 Hz) */
-
-using matrix::Dcmf;
-using matrix::Quatf;
-using matrix::Vector2f;
-using matrix::Vector3f;
+#define SCHEDULE_INTERVAL	1000000	/**< The schedule interval in usec (1 Hz) */
 
 class TerrainModule : public ModuleBase<TerrainModule>, public ModuleParams
 {
@@ -112,9 +107,9 @@ private:
     uint16_t pending_tiles{0};
     uint16_t loaded_tiles{0};
     float lat_grid_spacing_in_degrees;
-    float lng_grid_spacing_in_degrees;
+    float lon_grid_spacing_in_degrees;
     int lat_grid_spacing_origin;
-    int lng_grid_spacing_origin;
+    int lon_grid_spacing_origin;
     std::list<TerrainTile> tiles;
     std::list<TerrainTile> tiles_to_load;
     hrt_abstime data_timestamp;
@@ -133,16 +128,16 @@ private:
 
 	bool subscribe_topics();
 
-	float get_elevation(float lat, float lng);
+	float get_elevation(float lat, float lon);
 
-	float get_elevation(double lat, double lng)
+	float get_elevation(double lat, double lon)
     {
-        return get_elevation((float)lat, (float)lng);
+        return get_elevation((float)lat, (float)lon);
     }
 
-    float get_elevation(int32_t lat, int32_t lng)
+    float get_elevation(int32_t lat, int32_t lon)
     {
-        return get_elevation(lat/1e7f, lng/1e7f);
+        return get_elevation(lat/1e7f, lon/1e7f);
     }
 
     void process_tiles_to_load();
@@ -168,7 +163,7 @@ TerrainModule::TerrainModule():
 	_perf_elapsed = perf_alloc_once(PC_ELAPSED, "terrain elapsed");
 	_perf_interval = perf_alloc_once(PC_INTERVAL, "terrain interval");
 
-    lat_grid_spacing_origin = lng_grid_spacing_origin = INT_MAX;
+    lat_grid_spacing_origin = lon_grid_spacing_origin = INT_MAX;
 
     data_timestamp = hrt_absolute_time();
 }
@@ -245,6 +240,7 @@ TerrainModule::cycle()
     orb_check(_terrain_data_sub, &terrain_data_received);
     if (terrain_data_received)
     {
+        PX4_INFO("got terrain data");
     	terrain_data_s td = {};
         if (orb_copy(ORB_ID(terrain_data), _terrain_data_sub, &td) == PX4_OK)
             process_terrain_data(td);
@@ -312,11 +308,7 @@ int TerrainModule::print_usage(const char *reason)
 	PRINT_MODULE_DESCRIPTION(
 		R"DESCR_STR(
 ### Description
-This module runs a combined wind and airspeed scale factor estimator.
-If provided the vehicle NED speed and attitude it can estimate the horizontal wind components based on a zero
-sideslip assumption. This makes the estimator only suitable for fixed wing vehicles.
-If provided an airspeed measurement this module also estimates an airspeed scale factor based on the following model:
-measured_airspeed = scale_factor * real_airspeed.
+This module maintains terrain database.
 
 )DESCR_STR");
 
@@ -333,7 +325,8 @@ int TerrainModule::print_status()
 	perf_print_counter(_perf_interval);
 
 	if (_instance > -1)
-    {
+	{
+        PX4_INFO("Running.");
 	}
     else
     {
@@ -352,58 +345,57 @@ terrain_main(int argc, char *argv[])
 }
 
 float
-TerrainModule::get_elevation(float lat, float lng)
+TerrainModule::get_elevation(float lat, float lon)
 {
     int latd = TerrainTile::get_coord_deg(lat);
-    int lngd = TerrainTile::get_coord_deg(lng);
+    int lond = TerrainTile::get_coord_deg(lon);
 
     std::lock_guard<std::mutex> lock(terrain_mutex);
 
-    if (lat_grid_spacing_origin != latd || lng_grid_spacing_origin != lngd)
+    if (lat_grid_spacing_origin != latd || lon_grid_spacing_origin != lond)
     {
         lat_grid_spacing_origin = latd;
-        lng_grid_spacing_origin = lngd;
-        double lat_t, lng_t;
-        waypoint_from_heading_and_distance(latd, lngd, math::radians(0.0f), terrain_grid_spacing.get(), &lat_t, &lng_t);
+        lon_grid_spacing_origin = lond;
+        double lat_t, lon_t;
+        waypoint_from_heading_and_distance(latd, lond, math::radians(0.0f), terrain_grid_spacing.get(), &lat_t, &lon_t);
         lat_grid_spacing_in_degrees = (float)(lat_t - latd);
-        waypoint_from_heading_and_distance(latd, lngd, math::radians(90.0f), terrain_grid_spacing.get(), &lat_t, &lng_t);
-        lng_grid_spacing_in_degrees = (float)(lng_t - lngd);
+        waypoint_from_heading_and_distance(latd, lond, math::radians(90.0f), terrain_grid_spacing.get(), &lat_t, &lon_t);
+        lon_grid_spacing_in_degrees = (float)(lon_t - lond);
     }
 
-    int lat_i = (int)(std::abs(lat - latd) / lat_grid_spacing_in_degrees);
-    int lng_i = (int)(std::abs(lng - lngd) / lng_grid_spacing_in_degrees);
+    int lat_offset = (int)(std::abs(lat - latd) / lat_grid_spacing_in_degrees);
+    int lon_offset = (int)(std::abs(lon - lond) / lon_grid_spacing_in_degrees);
 
     for (auto i : tiles)
     {
-        float res = i.get_elevation(latd, lngd, lat_i, lng_i);
+        float res = i.get_elevation(latd, lond, lat_offset, lon_offset);
         if (!std::isnan(res))
             return res;
     }
 
-    TerrainTile new_tile(latd, lngd, lat_i, lng_i);
+    TerrainTile new_tile(latd, lond, lat_offset, lon_offset);
+
+    for (auto i : tiles_to_load)
+    {
+        // Tile is still loading - we don't have the result yet
+        if (i.matches(new_tile))
+            return std::numeric_limits<float>::quiet_NaN();
+    }
+
+    // Check if we can load the tile from a local file
     if (new_tile.load())
     {
         tiles.push_back(new_tile);
         loaded_tiles += TILES_4X4_NUM;
-        return new_tile.get_elevation(latd, lngd, lat_i, lng_i);
+        return new_tile.get_elevation(latd, lond, lat_offset, lon_offset);
     }
 
-    bool loading = false;
-    for (auto i : tiles_to_load)
-    {
-        if (i.matches(latd, lngd, lat_i, lng_i))
-        {
-            loading = true;
-            break;
-        }
-    }
-    if (!loading)
-    {
-        new_tile.lat = latd + lat_i * lat_grid_spacing_in_degrees;
-        new_tile.lng = lngd + lng_i * lng_grid_spacing_in_degrees;
-        pending_tiles += TILES_4X4_NUM;
-        tiles_to_load.push_back(new_tile);
-    }
+    new_tile.lat = (int32_t)(1.0E7f * (latd + new_tile.lat_offset * lat_grid_spacing_in_degrees));
+    new_tile.lon = (int32_t)(1.0E7f * (lond + new_tile.lon_offset * lon_grid_spacing_in_degrees));
+
+    pending_tiles += TILES_4X4_NUM;
+    PX4_INFO("New tile to load: %d,%d", new_tile.lat, new_tile.lon);
+    tiles_to_load.push_back(new_tile);
     
     return std::numeric_limits<float>::quiet_NaN();
 }
@@ -421,10 +413,12 @@ TerrainModule::process_tiles_to_load()
 
     terrain_request_s terrain_request_msg = {};
 
-    terrain_request_msg.lat = tile.get_lat();
-    terrain_request_msg.lon = tile.get_lng();
+    terrain_request_msg.lat = tile.lat;
+    terrain_request_msg.lon = tile.lon;
     terrain_request_msg.grid_spacing = (uint16_t)terrain_grid_spacing.get();
     terrain_request_msg.mask = tile.get_mask();
+
+    PX4_INFO("New terrain request: %d,%d", terrain_request_msg.lat, terrain_request_msg.lon);
 
     orb_publish_auto(ORB_ID(terrain_request), &_terrain_request_pub, &terrain_request_msg, &_instance, ORB_PRIO_DEFAULT);
 }
