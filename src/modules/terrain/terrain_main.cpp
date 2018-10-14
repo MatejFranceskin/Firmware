@@ -439,10 +439,10 @@ TerrainModule::process_terrain_data(terrain_data_s &td)
         loaded_tiles++;
         if (tile.valid())
         {
-            PX4_INFO("Terrain tile (%d,%d) saved", td.lat, td.lon);
             tile.save();
             tiles.push_back(tile);
             tiles_to_load.pop_front();
+            PX4_INFO("Terrain tile (%d,%d) saved", td.lat, td.lon);
         }
     }
 }

@@ -48,7 +48,7 @@
 #define TILE_4X4_WIDTH 8
 #define TILE_4X4_HEIGHT 7
 #define TILES_4X4_NUM TILE_4X4_WIDTH * TILE_4X4_HEIGHT
-#define MASK_ALL ((uint64_t)1 << (TILES_4X4_NUM + 1)) - 1
+#define MASK_ALL ((uint64_t)1 << TILES_4X4_NUM) - 1
 #define TERRAIN_FOLDER PX4_STORAGEDIR"/terrain/"
 
 class TerrainTile
@@ -63,8 +63,8 @@ public:
     {
         latd = _latd;
         lond = _lond;
-        lat_offset = round_down(_lat_offset, TILE_4X4_HEIGHT);
-        lon_offset = round_down(_lon_offset, TILE_4X4_WIDTH);
+        lat_offset = round_down(_lat_offset, matrix_height);
+        lon_offset = round_down(_lon_offset, matrix_width);
         mask = MASK_ALL;
     }
 
@@ -98,8 +98,8 @@ public:
     {
         return 
             latd == _latd && lond == _lond && 
-            _lat_offset_diff > 0 && _lat_offset_diff < matrix_height &&
-            _lon_offset_diff > 0 && _lon_offset_diff < matrix_width;
+            _lat_offset_diff >= 0 && _lat_offset_diff < matrix_height &&
+            _lon_offset_diff >= 0 && _lon_offset_diff < matrix_width;
     }
 
     bool set_terrain_data(uint8_t grid_bit, int16_t *data);
@@ -114,7 +114,7 @@ private:
 
     hrt_abstime access_timestamp;
 
-	std::int16_t elevations[matrix_width][matrix_height];
+	std::int16_t elevations[matrix_height][matrix_width];
 
     std::string get_file_name()
     {
