@@ -39,13 +39,14 @@
 #include <drivers/drv_hrt.h>
 #include <lib/ecl/geo/geo.h>
 #include <lib/mathlib/mathlib.h>
+#include <lib/ecl/geo/geo.h>
+#include <sys/stat.h>
 #include <matrix/math.hpp>
 #include <parameters/param.h>
 #include <perf/perf_counter.h>
 #include <px4_module.h>
 #include <px4_module_params.h>
 #include <px4_workqueue.h>
-#include <lib/ecl/geo/geo.h>
 #include <uORB/Subscription.hpp>
 #include <uORB/topics/parameter_update.h>
 #include <uORB/topics/vehicle_global_position.h>
@@ -63,7 +64,7 @@
 
 using namespace time_literals;
 
-#define SCHEDULE_INTERVAL	1000000	/**< The schedule interval in usec (1 Hz) */
+#define SCHEDULE_INTERVAL	100000	/**< The schedule interval in usec (10 Hz) */
 
 class TerrainModule : public ModuleBase<TerrainModule>, public ModuleParams
 {
@@ -165,7 +166,9 @@ TerrainModule::TerrainModule():
 
     lat_grid_spacing_origin = lon_grid_spacing_origin = INT_MAX;
 
-    data_timestamp = hrt_absolute_time();
+    mkdir(TERRAIN_FOLDER, S_IRWXU | S_IRWXG | S_IRWXO);
+
+    data_timestamp = hrt_absolute_time();    
 }
 
 TerrainModule::~TerrainModule()
@@ -240,7 +243,6 @@ TerrainModule::cycle()
     orb_check(_terrain_data_sub, &terrain_data_received);
     if (terrain_data_received)
     {
-        PX4_INFO("got terrain data");
     	terrain_data_s td = {};
         if (orb_copy(ORB_ID(terrain_data), _terrain_data_sub, &td) == PX4_OK)
             process_terrain_data(td);
@@ -426,6 +428,7 @@ TerrainModule::process_tiles_to_load()
 void
 TerrainModule::process_terrain_data(terrain_data_s &td)
 {
+    PX4_INFO("Process terrain data (%d,%d) bit: %d", td.lat, td.lon, td.grid_bit);
     std::lock_guard<std::mutex> lock(terrain_mutex);
     if (tiles_to_load.empty())
         return;
@@ -436,7 +439,9 @@ TerrainModule::process_terrain_data(terrain_data_s &td)
         loaded_tiles++;
         if (tile.valid())
         {
+            PX4_INFO("Terrain tile (%d,%d) saved", td.lat, td.lon);
             tile.save();
+            tiles.push_back(tile);
             tiles_to_load.pop_front();
         }
     }

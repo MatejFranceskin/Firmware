@@ -49,6 +49,7 @@
 #define TILE_4X4_HEIGHT 7
 #define TILES_4X4_NUM TILE_4X4_WIDTH * TILE_4X4_HEIGHT
 #define MASK_ALL ((uint64_t)1 << (TILES_4X4_NUM + 1)) - 1
+#define TERRAIN_FOLDER PX4_STORAGEDIR"/terrain/"
 
 class TerrainTile
 {
@@ -118,7 +119,7 @@ private:
     std::string get_file_name()
     {
         std::ostringstream oss;
-        oss << PX4_STORAGEDIR"/terrain/" << latd << "_" << lat_offset << "-" << lond << "_" << lon_offset;
+        oss << TERRAIN_FOLDER << latd << "_" << lat_offset << "-" << lond << "_" << lon_offset;
         return oss.str();
     }
 

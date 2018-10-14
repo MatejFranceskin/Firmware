@@ -60,15 +60,17 @@ bool
 TerrainTile::set_terrain_data(uint8_t grid_bit, int16_t *data)
 {
     uint64_t b = ((uint64_t)1) << grid_bit;
-    if ((mask & b) > 0)
+    if ((mask & b) == 0)
         return false;
     mask &= ~b;
-    uint8_t x = grid_bit / 8;
-    uint8_t y = grid_bit % 8;
+    PX4_INFO("set_terrain_data mask:%lx b:%lx", mask, b);
+    uint8_t x = (grid_bit / 8) * 4;
+    uint8_t y = (grid_bit % 8) * 4;
     for (int i = 0; i < 4; i++)
     {
         for (int j = 0; j < 4; j++)
         {
+            //PX4_INFO("set_terrain_data [%d][%d] = %d", x + i, y + j, data[j * 4 + i]);
             elevations[x + i][y + j] = data[j * 4 + i];
         }
     }
@@ -80,10 +82,13 @@ bool
 TerrainTile::load()
 {
     std::ifstream infile;
-    infile.open(get_file_name(), std::ios::binary | std::ios::in);
-    if (infile.fail())
+    std::string fn = get_file_name();
+    infile.open(fn, std::ios::binary | std::ios::in);
+    if (infile.fail()) {
+        PX4_DEBUG("Failed to open infile: %s", fn.c_str());
         return false;
-    infile.read((char*)elevations, sizeof(elevations));
+    }
+    infile.read((char*) elevations, sizeof(elevations));
     infile.close();
     mask = !infile.bad() ? 0 : MASK_ALL;
     
@@ -96,9 +101,12 @@ TerrainTile::save()
     if (!valid())
         return false;
     std::ofstream outfile;
-    outfile.open(get_file_name(), std::ios::binary | std::ios::out);
-    if (outfile.fail())
+    std::string fn = get_file_name();
+    outfile.open(fn, std::ios::binary | std::ios::out);
+    if (outfile.fail()) {
+        PX4_ERR("Failed to open outfile: %s", fn.c_str());
         return false;
+    }
     outfile.write((char*)elevations, sizeof(elevations));
     outfile.close();
 
