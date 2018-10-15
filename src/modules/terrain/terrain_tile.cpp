@@ -37,74 +37,81 @@
  * @author Matej Frančeškin <matej.franceskin@gmail.com>
  */
 
-#include <stdio.h>
+#include "terrain_tile.h"
 #include <fstream>
 #include <limits>
-#include "terrain_tile.h"
+#include <stdio.h>
 
-float
-TerrainTile::get_elevation(int _latd, int _lond, int _lat_offset, int _lon_offset)
+float TerrainTile::get_elevation(int _latd, int _lond, int _lat_offset, int _lon_offset)
 {
-    int lato = _lat_offset - lat_offset;
-    int lono = _lon_offset - lon_offset;
+	int lato = _lat_offset - lat_offset;
+	int lono = _lon_offset - lon_offset;
 
-    if (valid() && matches(_latd, _lond, lato, lono))
-    {
-        access_timestamp = hrt_absolute_time();
-        return elevations[lato][lono];
-    }
+	if (valid() && matches(_latd, _lond, lato, lono)) {
+		access_timestamp = hrt_absolute_time();
+		return elevations[lato][lono];
+	}
 
-    return std::numeric_limits<float>::quiet_NaN();
+	return std::numeric_limits<float>::quiet_NaN();
 }
 
-bool
-TerrainTile::set_terrain_data(uint8_t grid_bit, int16_t *data)
+bool TerrainTile::set_terrain_data(uint8_t grid_bit, int16_t *data)
 {
-    uint64_t b = ((uint64_t)1) << grid_bit;
-    if ((mask & b) == 0 || grid_bit >= TILES_4X4_NUM)
-        return false;
-    mask &= ~b;
-    PX4_INFO("set_terrain_data mask:%lx b:%lx", mask, b);
-    uint8_t io = (grid_bit / 8) * 4;
-    uint8_t jo = (grid_bit % 8) * 4;
-    for (int i = 0; i < 4; i++)
-        for (int j = 0; j < 4; j++)
-            elevations[io + i][jo + j] = data[i * 4 + j];
+	uint64_t b = ((uint64_t)1) << grid_bit;
 
-    return true;
+	if ((mask & b) == 0 || grid_bit >= TILES_4X4_NUM) {
+		return false;
+	}
+
+	mask &= ~b;
+	PX4_INFO("set_terrain_data mask:%lx b:%lx", mask, b);
+	uint8_t io = (grid_bit / 8) * 4;
+	uint8_t jo = (grid_bit % 8) * 4;
+
+	for (int i = 0; i < 4; i++) {
+		for (int j = 0; j < 4; j++) {
+			elevations[io + i][jo + j] = data[i * 4 + j];
+		}
+	}
+
+	return true;
 }
 
-bool
-TerrainTile::load()
+bool TerrainTile::load(int32_t grid_spacing)
 {
-    std::ifstream infile;
-    std::string fn = get_file_name();
-    infile.open(fn, std::ios::binary | std::ios::in);
-    if (infile.fail()) {
-        PX4_DEBUG("Failed to open infile: %s", fn.c_str());
-        return false;
-    }
-    infile.read((char*) elevations, sizeof(elevations));
-    infile.close();
-    mask = !infile.bad() ? 0 : MASK_ALL;
+	std::ifstream infile;
+	std::string fn = get_file_name(grid_spacing);
+	infile.open(fn, std::ios::binary | std::ios::in);
 
-    return valid();
+	if (infile.fail()) {
+		PX4_DEBUG("Failed to open infile: %s", fn.c_str());
+		return false;
+	}
+
+	infile.read((char *) elevations, sizeof(elevations));
+	infile.close();
+	mask = !infile.bad() ? 0 : MASK_ALL;
+
+	return valid();
 }
 
-bool
-TerrainTile::save()
+bool TerrainTile::save(int32_t grid_spacing)
 {
-    if (!valid())
-        return false;
-    std::ofstream outfile;
-    std::string fn = get_file_name();
-    outfile.open(fn, std::ios::binary | std::ios::out);
-    if (outfile.fail()) {
-        PX4_ERR("Failed to open outfile: %s", fn.c_str());
-        return false;
-    }
-    outfile.write((char*)elevations, sizeof(elevations));
-    outfile.close();
+	if (!valid()) {
+		return false;
+	}
 
-    return !outfile.bad();
+	std::ofstream outfile;
+	std::string fn = get_file_name(grid_spacing);
+	outfile.open(fn, std::ios::binary | std::ios::out);
+
+	if (outfile.fail()) {
+		PX4_ERR("Failed to open outfile: %s", fn.c_str());
+		return false;
+	}
+
+	outfile.write((char *) elevations, sizeof(elevations));
+	outfile.close();
+
+	return !outfile.bad();
 }

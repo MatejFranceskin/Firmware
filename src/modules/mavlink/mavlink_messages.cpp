@@ -4618,29 +4618,30 @@ private:
 
 	/* do not allow top copying this class */
 	MavlinkStreamTerrainRequest(MavlinkStreamTerrainRequest &) = delete;
-	MavlinkStreamTerrainRequest &operator = (const MavlinkStreamTerrainRequest &) = delete;
+	MavlinkStreamTerrainRequest &operator=(const MavlinkStreamTerrainRequest &) = delete;
 
 protected:
-	explicit MavlinkStreamTerrainRequest(Mavlink *mavlink) : MavlinkStream(mavlink),
+	explicit MavlinkStreamTerrainRequest(Mavlink *mavlink) :
+		MavlinkStream(mavlink),
 		_terrain_request_sub(_mavlink->add_orb_subscription(ORB_ID(terrain_request)))
-	{}
+	{
+	}
 
 	bool send(const hrt_abstime t)
 	{
 		terrain_request_s terrain_request;
 
 		if (_terrain_request_sub->update_if_changed(&terrain_request)) {
-
-            mavlink_terrain_request_t msg = {};
+			mavlink_terrain_request_t msg = {};
 
 			msg.mask = terrain_request.mask;
-            msg.lat = terrain_request.lat;
-            msg.lon = terrain_request.lon;
-            msg.grid_spacing = terrain_request.grid_spacing;
+			msg.lat = terrain_request.lat;
+			msg.lon = terrain_request.lon;
+			msg.grid_spacing = terrain_request.grid_spacing;
 
-            PX4_INFO("Send Terrain Request %d", t);
+			PX4_INFO("Send Terrain Request %d", t);
 
-            mavlink_msg_terrain_request_send_struct(_mavlink->get_channel(), &msg);
+			mavlink_msg_terrain_request_send_struct(_mavlink->get_channel(), &msg);
 
 			return true;
 		}
@@ -4687,29 +4688,30 @@ private:
 
 	/* do not allow top copying this class */
 	MavlinkStreamTerrainReport(MavlinkStreamTerrainReport &) = delete;
-	MavlinkStreamTerrainReport &operator = (const MavlinkStreamTerrainReport &) = delete;
+	MavlinkStreamTerrainReport &operator=(const MavlinkStreamTerrainReport &) = delete;
 
 protected:
-	explicit MavlinkStreamTerrainReport(Mavlink *mavlink) : MavlinkStream(mavlink),
+	explicit MavlinkStreamTerrainReport(Mavlink *mavlink) :
+		MavlinkStream(mavlink),
 		_terrain_report_sub(_mavlink->add_orb_subscription(ORB_ID(terrain_report)))
-	{}
+	{
+	}
 
 	bool send(const hrt_abstime t)
 	{
 		terrain_report_s terrain_report;
 
 		if (_terrain_report_sub->update_if_changed(&terrain_report)) {
+			mavlink_terrain_report_t msg = {};
 
-            mavlink_terrain_report_t msg = {};
-
-            msg.lat = terrain_report.lat;
-            msg.lon = terrain_report.lon;
-            msg.terrain_height = terrain_report.terrain_height;
-            msg.current_height = terrain_report.current_height;
-            msg.spacing = terrain_report.spacing;
-            msg.pending = terrain_report.pending;
-            msg.loaded = terrain_report.loaded;
-            mavlink_msg_terrain_report_send_struct(_mavlink->get_channel(), &msg);
+			msg.lat = terrain_report.lat;
+			msg.lon = terrain_report.lon;
+			msg.terrain_height = terrain_report.terrain_height;
+			msg.current_height = terrain_report.current_height;
+			msg.spacing = terrain_report.spacing;
+			msg.pending = terrain_report.pending;
+			msg.loaded = terrain_report.loaded;
+			mavlink_msg_terrain_report_send_struct(_mavlink->get_channel(), &msg);
 
 			return true;
 		}

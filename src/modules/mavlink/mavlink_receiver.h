@@ -149,8 +149,8 @@ private:
 	void handle_message_hil_gps(mavlink_message_t *msg);
 	void handle_message_hil_state_quaternion(mavlink_message_t *msg);
 	void handle_message_distance_sensor(mavlink_message_t *msg);
-    void handle_message_terrain_data(mavlink_message_t *msg);
-    void handle_message_terrain_check(mavlink_message_t *msg);
+	void handle_message_terrain_data(mavlink_message_t *msg);
+	void handle_message_terrain_check(mavlink_message_t *msg);
 	void handle_message_follow_target(mavlink_message_t *msg);
 	void handle_message_landing_target(mavlink_message_t *msg);
 	void handle_message_adsb_vehicle(mavlink_message_t *msg);
