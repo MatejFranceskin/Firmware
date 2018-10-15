@@ -120,6 +120,9 @@ private:
 		(ParamInt<px4::params::TER_MAX_MEM>)terrain_max_mem,
 		(ParamInt<px4::params::TER_TIMEOUT>)terrain_timeout)
 
+	int32_t ter_grid_spacing;
+	std::size_t ter_max_mem;
+
 	static void cycle_trampoline(void *arg);
 
 	int start();
@@ -164,6 +167,9 @@ TerrainModule::TerrainModule()
 	_perf_interval = perf_alloc_once(PC_INTERVAL, "terrain interval");
 
 	lat_grid_spacing_origin = lon_grid_spacing_origin = INT_MAX;
+
+	ter_grid_spacing = 30;
+	ter_max_mem = 4;
 
 	mkdir(TERRAIN_FOLDER, S_IRWXU | S_IRWXG | S_IRWXO);
 
@@ -280,6 +286,20 @@ void TerrainModule::cycle()
 
 void TerrainModule::update_params()
 {
+	int32_t val_grid_spacing = terrain_grid_spacing.get();
+	std::size_t val_max_mem = (std::size_t) terrain_max_mem.get();
+
+	if (ter_grid_spacing != val_grid_spacing || val_max_mem != ter_max_mem) {
+		std::lock_guard<std::mutex> lock(terrain_mutex);
+		tiles.clear();
+		tiles_to_load.clear();
+		pending_tiles = 0;
+		loaded_tiles = 0;
+	}
+
+	ter_grid_spacing = val_grid_spacing;
+	ter_max_mem = val_max_mem;
+
 	updateParams();
 }
 
@@ -348,9 +368,9 @@ float TerrainModule::get_elevation(float lat, float lon)
 		lat_grid_spacing_origin = latd;
 		lon_grid_spacing_origin = lond;
 		double lat_t, lon_t;
-		waypoint_from_heading_and_distance(latd, lond, math::radians(0.0f), terrain_grid_spacing.get(), &lat_t, &lon_t);
+		waypoint_from_heading_and_distance(latd, lond, math::radians(0.0f), ter_grid_spacing, &lat_t, &lon_t);
 		lat_grid_spacing_in_degrees = (float)(lat_t - latd);
-		waypoint_from_heading_and_distance(latd, lond, math::radians(90.0f), terrain_grid_spacing.get(), &lat_t, &lon_t);
+		waypoint_from_heading_and_distance(latd, lond, math::radians(90.0f), ter_grid_spacing, &lat_t, &lon_t);
 		lon_grid_spacing_in_degrees = (float)(lon_t - lond);
 	}
 
@@ -373,10 +393,10 @@ float TerrainModule::get_elevation(float lat, float lon)
 	}
 
 	// Check if we can load the tile from a local file
-	if (new_tile.load(terrain_grid_spacing.get())) {
+	if (new_tile.load(ter_grid_spacing)) {
 		tiles.push_front(new_tile);
 
-		if (tiles.size() > (std::size_t)terrain_max_mem.get())
+		if (tiles.size() > ter_max_mem)
 			tiles.pop_back();
 
 		loaded_tiles += TILES_4X4_NUM;
@@ -389,7 +409,7 @@ float TerrainModule::get_elevation(float lat, float lon)
 	pending_tiles += TILES_4X4_NUM;
 	PX4_INFO("New tile to load: %d,%d", new_tile.lat, new_tile.lon);
 
-	if (tiles_to_load.size() >= (std::size_t)terrain_max_mem.get())
+	if (tiles_to_load.size() >= ter_max_mem)
 		tiles_to_load.pop_back();
 
 	tiles_to_load.push_back(new_tile);
@@ -411,7 +431,7 @@ void TerrainModule::process_tiles_to_load()
 
 	terrain_request_msg.lat = tile.lat;
 	terrain_request_msg.lon = tile.lon;
-	terrain_request_msg.grid_spacing = (uint16_t)terrain_grid_spacing.get();
+	terrain_request_msg.grid_spacing = (uint16_t)ter_grid_spacing;
 	terrain_request_msg.mask = tile.get_mask();
 
 	PX4_INFO("New terrain request: %d,%d", terrain_request_msg.lat, terrain_request_msg.lon);
@@ -435,9 +455,9 @@ void TerrainModule::process_terrain_data(terrain_data_s &td)
 		loaded_tiles++;
 
 		if (tile.valid()) {
-			tile.save(terrain_grid_spacing.get());
+			tile.save(ter_grid_spacing);
 			tiles.push_front(tile);
-			if (tiles.size() > (std::size_t)terrain_max_mem.get())
+			if (tiles.size() > ter_max_mem)
 				tiles.pop_back();
 			tiles_to_load.pop_front();
 			PX4_INFO("Terrain tile (%d,%d) saved", td.lat, td.lon);
@@ -451,7 +471,7 @@ void TerrainModule::process_terrain_check(terrain_check_s &tc)
 
 	terrain_report_msg.lat = tc.lat;
 	terrain_report_msg.lon = tc.lon;
-	terrain_report_msg.spacing = (uint16_t)terrain_grid_spacing.get();
+	terrain_report_msg.spacing = (uint16_t)ter_grid_spacing;
 	terrain_report_msg.terrain_height = get_elevation(tc.lat, tc.lon);
 	terrain_report_msg.current_height = current_alt;
 	terrain_report_msg.pending = pending_tiles;
