@@ -44,6 +44,7 @@
 #include <cinttypes>
 #include <sstream>
 #include <string>
+#include <uORB/topics/terrain_data.h>
 
 #define TILE_4X4_WIDTH 8
 #define TILE_4X4_HEIGHT 7
@@ -94,7 +95,7 @@ public:
 			&& _lon_offset_diff >= 0 && _lon_offset_diff < matrix_width;
 	}
 
-	bool set_terrain_data(uint8_t grid_bit, int16_t *data);
+	bool set_terrain_data(terrain_data_s &td);
 
 private:
 	static const int matrix_width = TILE_4X4_WIDTH * 4;

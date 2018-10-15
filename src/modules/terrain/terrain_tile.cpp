@@ -55,22 +55,22 @@ float TerrainTile::get_elevation(int _latd, int _lond, int _lat_offset, int _lon
 	return std::numeric_limits<float>::quiet_NaN();
 }
 
-bool TerrainTile::set_terrain_data(uint8_t grid_bit, int16_t *data)
+bool TerrainTile::set_terrain_data(terrain_data_s &td)
 {
-	uint64_t b = ((uint64_t)1) << grid_bit;
+	uint64_t b = ((uint64_t)1) << td.grid_bit;
 
-	if ((mask & b) == 0 || grid_bit >= TILES_4X4_NUM) {
+	if (lat != td.lat || lon != td.lon || (mask & b) == 0 || td.grid_bit >= TILES_4X4_NUM) {
 		return false;
 	}
 
 	mask &= ~b;
 	PX4_INFO("set_terrain_data mask:%lx b:%lx", mask, b);
-	uint8_t io = (grid_bit / 8) * 4;
-	uint8_t jo = (grid_bit % 8) * 4;
+	uint8_t io = (td.grid_bit / 8) * 4;
+	uint8_t jo = (td.grid_bit % 8) * 4;
 
 	for (int i = 0; i < 4; i++) {
 		for (int j = 0; j < 4; j++) {
-			elevations[io + i][jo + j] = data[i * 4 + j];
+			elevations[io + i][jo + j] = td.data[i * 4 + j];
 		}
 	}
 
@@ -88,6 +88,7 @@ bool TerrainTile::load(int32_t grid_spacing)
 		return false;
 	}
 
+	PX4_INFO("Loading: %s", fn.c_str());
 	infile.read((char *) elevations, sizeof(elevations));
 	infile.close();
 	mask = !infile.bad() ? 0 : MASK_ALL;

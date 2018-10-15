@@ -117,6 +117,7 @@ private:
 
 	DEFINE_PARAMETERS(
 		(ParamInt<px4::params::TER_GRID>)terrain_grid_spacing,
+		(ParamInt<px4::params::TER_MAX_MEM>)terrain_max_mem,
 		(ParamInt<px4::params::TER_TIMEOUT>)terrain_timeout)
 
 	static void cycle_trampoline(void *arg);
@@ -373,7 +374,11 @@ float TerrainModule::get_elevation(float lat, float lon)
 
 	// Check if we can load the tile from a local file
 	if (new_tile.load(terrain_grid_spacing.get())) {
-		tiles.push_back(new_tile);
+		tiles.push_front(new_tile);
+
+		if (tiles.size() > (std::size_t)terrain_max_mem.get())
+			tiles.pop_back();
+
 		loaded_tiles += TILES_4X4_NUM;
 		return new_tile.get_elevation(latd, lond, lat_offset, lon_offset);
 	}
@@ -383,6 +388,10 @@ float TerrainModule::get_elevation(float lat, float lon)
 
 	pending_tiles += TILES_4X4_NUM;
 	PX4_INFO("New tile to load: %d,%d", new_tile.lat, new_tile.lon);
+
+	if (tiles_to_load.size() >= (std::size_t)terrain_max_mem.get())
+		tiles_to_load.pop_back();
+
 	tiles_to_load.push_back(new_tile);
 
 	return std::numeric_limits<float>::quiet_NaN();
@@ -410,26 +419,33 @@ void TerrainModule::process_tiles_to_load()
 	orb_publish_auto(ORB_ID(terrain_request), &_terrain_request_pub, &terrain_request_msg, &_instance, ORB_PRIO_DEFAULT);
 }
 
-void TerrainModule::process_terrain_data(terrain_data_s& td)
+void TerrainModule::process_terrain_data(terrain_data_s &td)
 {
 	PX4_INFO("Process terrain data (%d,%d) bit: %d", td.lat, td.lon, td.grid_bit);
 	std::lock_guard<std::mutex> lock(terrain_mutex);
-	if (tiles_to_load.empty())
+
+	if (tiles_to_load.empty()) {
 		return;
+	}
+
 	TerrainTile& tile = tiles_to_load.front();
-	if (tile.set_terrain_data(td.grid_bit, td.data)) {
+
+	if (tile.set_terrain_data(td)) {
 		pending_tiles--;
 		loaded_tiles++;
+
 		if (tile.valid()) {
 			tile.save(terrain_grid_spacing.get());
-			tiles.push_back(tile);
+			tiles.push_front(tile);
+			if (tiles.size() > (std::size_t)terrain_max_mem.get())
+				tiles.pop_back();
 			tiles_to_load.pop_front();
 			PX4_INFO("Terrain tile (%d,%d) saved", td.lat, td.lon);
 		}
 	}
 }
 
-void TerrainModule::process_terrain_check(terrain_check_s& tc)
+void TerrainModule::process_terrain_check(terrain_check_s &tc)
 {
 	terrain_report_s terrain_report_msg = {};
 

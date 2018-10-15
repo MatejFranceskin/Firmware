@@ -867,9 +867,7 @@ MavlinkReceiver::handle_message_terrain_data(mavlink_message_t *msg)
 	d.lon = terrain_data.lon;
 	d.grid_spacing = terrain_data.grid_spacing;
 
-	for (int i = 0; i < 16; i++) {
-		d.data[i] = terrain_data.data[i];
-	}
+	memcpy(d.data, terrain_data.data, sizeof(d.data));
 
 	d.grid_bit = terrain_data.gridbit;
 
