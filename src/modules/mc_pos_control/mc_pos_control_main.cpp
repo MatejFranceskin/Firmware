@@ -267,7 +267,7 @@ private:
 	/**
 	 * Overwrite setpoint with waypoint coming from obstacle avoidance
 	 */
-	void execute_avoidance_waypoint();
+	void execute_avoidance_waypoint(vehicle_local_position_setpoint_s &setpoint);
 
 	/**
 	 * Publish desired vehicle_trajectory_waypoint
@@ -692,6 +692,8 @@ MulticopterPositionControl::run()
 				setpoint.yawspeed = NAN;
 				setpoint.yaw = _states.yaw;
 				constraints.landing_gear = vehicle_constraints_s::GEAR_KEEP;
+				// reactivate the task which will reset the setpoint to current state
+				_flight_tasks.reActivate();
 			}
 
 			// limit altitude only if local position is valid
@@ -703,11 +705,14 @@ MulticopterPositionControl::run()
 			_control.updateConstraints(constraints);
 			_control.updateState(_states);
 
-			if (!use_obstacle_avoidance()) {
-				_control.updateSetpoint(setpoint);
+			// adjust setpoints based on avoidance
+			if (use_obstacle_avoidance()) {
+				execute_avoidance_waypoint(setpoint);
+			}
 
-			} else {
-				execute_avoidance_waypoint();
+			// update position controller setpoints
+			if (!_control.updateSetpoint(setpoint)) {
+				warn_rate_limited("Position-Control Setpoint-Update failed");
 			}
 
 			// Generate desired thrust and yaw.
@@ -1076,10 +1081,8 @@ MulticopterPositionControl::update_avoidance_waypoint_desired(PositionControlSta
 }
 
 void
-MulticopterPositionControl::execute_avoidance_waypoint()
+MulticopterPositionControl::execute_avoidance_waypoint(vehicle_local_position_setpoint_s &setpoint)
 {
-	vehicle_local_position_setpoint_s setpoint;
-
 	setpoint.x = _traj_wp_avoidance.waypoints[vehicle_trajectory_waypoint_s::POINT_0].position[0];
 	setpoint.y = _traj_wp_avoidance.waypoints[vehicle_trajectory_waypoint_s::POINT_0].position[1];
 	setpoint.z = _traj_wp_avoidance.waypoints[vehicle_trajectory_waypoint_s::POINT_0].position[2];
@@ -1093,8 +1096,6 @@ MulticopterPositionControl::execute_avoidance_waypoint()
 	setpoint.yaw = _traj_wp_avoidance.waypoints[vehicle_trajectory_waypoint_s::POINT_0].yaw;
 	setpoint.yawspeed = _traj_wp_avoidance.waypoints[vehicle_trajectory_waypoint_s::POINT_0].yaw_speed;
 	Vector3f(NAN, NAN, NAN).copyTo(setpoint.thrust);
-
-	_control.updateSetpoint(setpoint);
 }
 
 bool
