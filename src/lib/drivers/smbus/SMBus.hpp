@@ -1,7 +1,6 @@
 /****************************************************************************
  *
- *   Copyright (c) 2012-2016 PX4 Development Team. All rights reserved.
- *         Author: David Sidrane <david_s5@nscdg.com>
+ *   Copyright (c) 2018 PX4 Development Team. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -32,54 +31,50 @@
  *
  ****************************************************************************/
 
-/**
- * @file tap-v1_spi.c
- *
- * Board-specific SPI functions.
- */
+#include <drivers/device/i2c.h>
 
-/************************************************************************************
- * Included Files
- ************************************************************************************/
+#include <string.h>
 
-#include <px4_config.h>
+#define SMBUS_PEC_POLYNOMIAL	0x07	///< Polynomial for calculating PEC
 
-#include <stdint.h>
-#include <stdbool.h>
-#include <debug.h>
-
-#include <nuttx/spi/spi.h>
-#include <arch/board/board.h>
-
-#include "board_config.h"
-
-/************************************************************************************
- * Public Functions
- ************************************************************************************/
-
-/************************************************************************************
- * Name: stm32_spiinitialize
- *
- * Description:
- *   Called to configure SPI chip select GPIO pins for the tap-v1 board.
- *
- ************************************************************************************/
-
-__EXPORT void stm32_spiinitialize(void)
+class SMBus : public device::I2C
 {
-	stm32_configgpio(GPIO_SPI_CS_SDCARD);
-	stm32_configgpio(GPIO_SPI_SD_SW);
-}
+public:
+	SMBus(int bus_num, uint16_t address);
+	~SMBus();
 
+	/**
+	 * @brief Sends a block write command.
+	 * @param cmd_code The command code.
+	 * @param data The data to be written.
+	 * @param length The number of bytes being written.
+	 * @return Returns PX4_OK on success, PX4_ERROR on failure.
+	 */
+	int block_write(const uint8_t cmd_code, void *data, uint8_t byte_count, bool use_pec);
 
-__EXPORT void stm32_spi2select(FAR struct spi_dev_s *dev, uint32_t devid, bool selected)
-{
-	/* there can only be one device on this bus, so always select it */
-	stm32_gpiowrite(GPIO_SPI_CS_SDCARD, !selected);
-}
+	/**
+	 * @brief Sends a block read command.
+	 * @param cmd_code The command code.
+	 * @param data The returned data.
+	 * @param length The number of bytes being read
+	 * @return Returns PX4_OK on success, PX4_ERROR on failure.
+	 */
+	int block_read(const uint8_t cmd_code, void *data, const uint8_t length, bool use_pec);
 
-__EXPORT uint8_t stm32_spi2status(FAR struct spi_dev_s *dev, uint32_t devid)
-{
-	return !stm32_gpioread(GPIO_SPI_SD_SW);
-}
+	/**
+	 * @brief Sends a read word command.
+	 * @param cmd_code The command code.
+	 * @param data The 2 bytes of returned data plus a 1 byte CRC if used.
+	 * @return Returns PX4_OK on success, PX4_ERROR on failure.
+	 */
+	int read_word(const uint8_t cmd_code, void *data);
 
+	/**
+	 * @brief Calculates the PEC from the data.
+	 * @param buffer The buffer that stores the data to perform the CRC over.
+	 * @param length The number of bytes being written.
+	 * @return Returns PX4_OK on success, PX4_ERROR on failure.
+	 */
+	uint8_t get_pec(uint8_t *buffer, uint8_t length);
+
+};
