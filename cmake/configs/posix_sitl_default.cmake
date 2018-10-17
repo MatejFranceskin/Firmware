@@ -52,6 +52,7 @@ set(config_module_list
 	modules/mavlink/mavlink_tests
 	modules/uORB/uORB_tests
 	systemcmds/tests
+	modules/terrain/tests
 
 	platforms/posix/tests/hello
 	platforms/posix/tests/hrt_test
