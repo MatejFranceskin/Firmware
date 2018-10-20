@@ -955,7 +955,7 @@ gps start -d /dev/ttyS3 -e /dev/ttyS4
 	PRINT_MODULE_USAGE_PARAM_FLAG('s', "Enable publication of satellite info", true);
 
 	PRINT_MODULE_USAGE_PARAM_STRING('i', "uart", "spi|uart", "GPS interface", true);
-	PRINT_MODULE_USAGE_PARAM_STRING('p', nullptr, "ubx|mtk|ash", "GPS Protocol (default=auto select)", true);
+	PRINT_MODULE_USAGE_PARAM_STRING('p', nullptr, "ubx|mtk|ash|sbf", "GPS Protocol (default=auto select)", true);
 
 	PRINT_MODULE_USAGE_DEFAULT_COMMANDS();
 
@@ -1085,6 +1085,9 @@ GPS *GPS::instantiate(int argc, char *argv[], Instance instance)
 
 			} else if (!strcmp(myoptarg, "ash")) {
 				mode = GPS_DRIVER_MODE_ASHTECH;
+
+			} else if (!strcmp(myoptarg, "sbf")) {
+				mode = GPS_DRIVER_MODE_SBF;
 
 			} else {
 				PX4_ERR("unknown interface: %s", myoptarg);
