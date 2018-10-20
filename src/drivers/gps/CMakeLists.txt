@@ -44,6 +44,7 @@ px4_add_module(
 		devices/src/ashtech.cpp
 		devices/src/ubx.cpp
 		devices/src/rtcm.cpp
+		devices/src/sbf.cpp
 	MODULE_CONFIG
 		module.yaml
 	DEPENDS
