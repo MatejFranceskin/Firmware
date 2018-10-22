@@ -1,6 +1,6 @@
 /****************************************************************************
  *
- *   Copyright (c) 2013-2017 PX4 Development Team. All rights reserved.
+ *   Copyright (c) 2013-2018 PX4 Development Team. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -144,8 +144,12 @@ public:
 	 */
 	int print_status() override;
 
-private:
+	/**
+	 * Reset GPS device
+	 */
+	void reset(GPSRestartType restart_type);
 
+private:
 	int				_serial_fd{-1};					///< serial interface to GPS
 	unsigned			_baudrate{0};					///< current baudrate
 	const unsigned			_configured_baudrate{0};			///< configured baudrate (0=auto-detect)
@@ -185,6 +189,8 @@ private:
 
 	static volatile bool _is_gps_main_advertised; ///< for the second gps we want to make sure that it gets instance 1
 	/// and thus we wait until the first one publishes at least one message.
+
+	static volatile GPS *_primary_instance;
 
 	static volatile GPS *_secondary_instance;
 
@@ -246,6 +252,7 @@ private:
 };
 
 volatile bool GPS::_is_gps_main_advertised = false;
+volatile GPS *GPS::_primary_instance = nullptr;
 volatile GPS *GPS::_secondary_instance = nullptr;
 
 /*
@@ -819,8 +826,6 @@ GPS::run()
 	orb_unadvertise(_report_gps_pos_pub);
 }
 
-
-
 int
 GPS::print_status()
 {
@@ -887,6 +892,19 @@ GPS::print_status()
 }
 
 void
+GPS::reset(GPSRestartType restart_type)
+{
+	if (!_helper->reset(restart_type)) {
+		PX4_INFO("Reset is not supported on this device.");
+	}
+
+	if (_instance == Instance::Main && _secondary_instance) {
+		GPS *secondary_instance = (GPS *)_secondary_instance;
+		secondary_instance->reset(restart_type);
+	}
+}
+
+void
 GPS::publish()
 {
 	if (_instance == Instance::Main || _is_gps_main_advertised) {
@@ -911,8 +929,31 @@ GPS::publishSatelliteInfo()
 	}
 }
 
-int GPS::custom_command(int argc, char *argv[])
+int
+GPS::custom_command(int argc, char *argv[])
 {
+	if (argc == 2 && !strcmp(argv[0], "reset")) {
+
+		if (_primary_instance) {
+			GPS *primary_instance = (GPS *)_primary_instance;
+
+			if (!strcmp(argv[1], "hot")) {
+				primary_instance->reset(GPSRestartType::Hot);
+
+			} else if (!strcmp(argv[1], "cold")) {
+				primary_instance->reset(GPSRestartType::Cold);
+
+			} else if (!strcmp(argv[1], "warm")) {
+				primary_instance->reset(GPSRestartType::Warm);
+			}
+
+		} else {
+			PX4_INFO("GPS not started");
+		}
+
+		return 0;
+	}
+
 	return print_usage("unknown command");
 }
 
@@ -940,8 +981,12 @@ so that they can be used in other projects as well (eg. QGroundControl uses them
 For testing it can be useful to fake a GPS signal (it will signal the system that it has a valid position):
 $ gps stop
 $ gps start -f
+
 Starting 2 GPS devices (the main GPS on /dev/ttyS3 and the secondary on /dev/ttyS4):
-gps start -d /dev/ttyS3 -e /dev/ttyS4
+$ gps start -d /dev/ttyS3 -e /dev/ttyS4
+
+Initiate warm restart of GPS device
+$ gps reset warm
 )DESCR_STR");
 
 	PRINT_MODULE_USAGE_NAME("gps", "driver");
@@ -958,6 +1003,8 @@ gps start -d /dev/ttyS3 -e /dev/ttyS4
 	PRINT_MODULE_USAGE_PARAM_STRING('p', nullptr, "ubx|mtk|ash|sbf", "GPS Protocol (default=auto select)", true);
 
 	PRINT_MODULE_USAGE_DEFAULT_COMMANDS();
+
+	PRINT_MODULE_USAGE_COMMAND_DESCR("reset { hot | cold | warm }", "Reset GPS device");
 
 	return 0;
 }
@@ -1113,6 +1160,7 @@ GPS *GPS::instantiate(int argc, char *argv[], Instance instance)
 	GPS *gps;
 	if (instance == Instance::Main) {
 		gps = new GPS(device_name, mode, interface, fake_gps, enable_sat_info, instance, baudrate_main);
+		_primary_instance = gps;
 
 		if (gps && device_name_secondary) {
 			task_spawn(argc, argv, Instance::Secondary);
