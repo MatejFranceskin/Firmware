@@ -48,7 +48,6 @@
 #include <poll.h>
 #endif
 
-
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <sys/types.h>
@@ -145,9 +144,14 @@ public:
 	int print_status() override;
 
 	/**
-	 * Reset GPS device
+	 * Schedule reset of the GPS device
 	 */
-	void reset(GPSRestartType restart_type);
+	void schedule_reset(GPSRestartType restart_type);
+
+	/**
+	 * Reset device if reset was scheduled
+	 */
+	void reset_if_scheduled();
 
 private:
 	int				_serial_fd{-1};					///< serial interface to GPS
@@ -190,9 +194,9 @@ private:
 	static volatile bool _is_gps_main_advertised; ///< for the second gps we want to make sure that it gets instance 1
 	/// and thus we wait until the first one publishes at least one message.
 
-	static volatile GPS *_primary_instance;
-
 	static volatile GPS *_secondary_instance;
+
+	volatile GPSRestartType _scheduled_reset{GPSRestartType::None};
 
 	/**
 	 * Publish the gps struct
@@ -252,7 +256,6 @@ private:
 };
 
 volatile bool GPS::_is_gps_main_advertised = false;
-volatile GPS *GPS::_primary_instance = nullptr;
 volatile GPS *GPS::_secondary_instance = nullptr;
 
 /*
@@ -731,6 +734,8 @@ GPS::run()
 						publishSatelliteInfo();
 					}
 
+					reset_if_scheduled();
+
 					/* measure update rate every 5 seconds */
 					if (hrt_absolute_time() - last_rate_measurement > RATE_MEASUREMENT_PERIOD) {
 						float dt = (float)((hrt_absolute_time() - last_rate_measurement)) / 1000000.0f;
@@ -892,15 +897,26 @@ GPS::print_status()
 }
 
 void
-GPS::reset(GPSRestartType restart_type)
+GPS::schedule_reset(GPSRestartType restart_type)
 {
-	if (!_helper->reset(restart_type)) {
-		PX4_INFO("Reset is not supported on this device.");
-	}
+	_scheduled_reset = restart_type;
 
 	if (_instance == Instance::Main && _secondary_instance) {
 		GPS *secondary_instance = (GPS *)_secondary_instance;
-		secondary_instance->reset(restart_type);
+		secondary_instance->schedule_reset(restart_type);
+	}
+}
+
+void
+GPS::reset_if_scheduled()
+{
+	GPSRestartType restart_type = _scheduled_reset;
+
+	if (restart_type != GPSRestartType::None) {
+		_scheduled_reset = GPSRestartType::None;
+		if (!_helper->reset(restart_type)) {
+			PX4_INFO("Reset is not supported on this device.");
+		}
 	}
 }
 
@@ -932,26 +948,25 @@ GPS::publishSatelliteInfo()
 int
 GPS::custom_command(int argc, char *argv[])
 {
-	if (argc == 2 && !strcmp(argv[0], "reset")) {
+	// Check if the driver is running.
+	if (!is_running() && !_object) {
+		PX4_INFO("not running");
+		return PX4_ERROR;
+	}
 
-		if (_primary_instance) {
-			GPS *primary_instance = (GPS *)_primary_instance;
+	GPS *_instance = get_instance();
 
-			if (!strcmp(argv[1], "hot")) {
-				primary_instance->reset(GPSRestartType::Hot);
+	if (_instance && argc == 2 && !strcmp(argv[0], "reset")) {
 
-			} else if (!strcmp(argv[1], "cold")) {
-				primary_instance->reset(GPSRestartType::Cold);
+		if (!strcmp(argv[1], "hot")) {
+			_instance->schedule_reset(GPSRestartType::Hot);
 
-			} else if (!strcmp(argv[1], "warm")) {
-				primary_instance->reset(GPSRestartType::Warm);
-			}
+		} else if (!strcmp(argv[1], "cold")) {
+			_instance->schedule_reset(GPSRestartType::Cold);
 
-		} else {
-			PX4_INFO("GPS not started");
+		} else if (!strcmp(argv[1], "warm")) {
+			_instance->schedule_reset(GPSRestartType::Warm);
 		}
-
-		return 0;
 	}
 
 	return print_usage("unknown command");
@@ -1160,7 +1175,6 @@ GPS *GPS::instantiate(int argc, char *argv[], Instance instance)
 	GPS *gps;
 	if (instance == Instance::Main) {
 		gps = new GPS(device_name, mode, interface, fake_gps, enable_sat_info, instance, baudrate_main);
-		_primary_instance = gps;
 
 		if (gps && device_name_secondary) {
 			task_spawn(argc, argv, Instance::Secondary);
