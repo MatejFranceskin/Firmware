@@ -964,20 +964,29 @@ GPS::custom_command(int argc, char *argv[])
 
 	GPS *_instance = get_instance();
 
+	bool res = false;
 	if (_instance && argc == 2 && !strcmp(argv[0], "reset")) {
 
 		if (!strcmp(argv[1], "hot")) {
+			res = true;
 			_instance->schedule_reset(GPSRestartType::Hot);
 
 		} else if (!strcmp(argv[1], "cold")) {
+			res = true;
 			_instance->schedule_reset(GPSRestartType::Cold);
 
 		} else if (!strcmp(argv[1], "warm")) {
+			res = true;
 			_instance->schedule_reset(GPSRestartType::Warm);
 		}
 	}
 
-	return print_usage("unknown command");
+	if (res) {
+		PX4_INFO("Resetting GPS - %s", argv[1]);
+		return 0;
+	}
+
+	return (res) ? 0 : print_usage("unknown command");
 }
 
 int GPS::print_usage(const char *reason)
