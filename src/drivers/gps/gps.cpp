@@ -99,7 +99,8 @@ typedef enum {
 	GPS_DRIVER_MODE_NONE = 0,
 	GPS_DRIVER_MODE_UBX,
 	GPS_DRIVER_MODE_MTK,
-	GPS_DRIVER_MODE_ASHTECH
+	GPS_DRIVER_MODE_ASHTECH,
+	GPS_DRIVER_MODE_SBF
 } gps_driver_mode_t;
 
 /* struct for dynamic allocation of satellite info data */
