@@ -856,6 +856,10 @@ GPS::print_status()
 			PX4_INFO("protocol: ASHTECH");
 			break;
 
+		case GPS_DRIVER_MODE_SBF:
+			PX4_INFO("protocol: SBF");
+			break;
+
 		default:
 			break;
 		}
