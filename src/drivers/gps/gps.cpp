@@ -722,7 +722,7 @@ GPS::run()
 				break;
 
 			case GPS_DRIVER_MODE_SBF:
-				_helper = new GPSDriverSBF(_interface, &GPS::callback, this, &_report_gps_pos, _p_report_sat_info,
+				_helper = new GPSDriverSBF(&GPS::callback, this, &_report_gps_pos, _p_report_sat_info,
 							   gps_dynmodel);
 				break;
 
