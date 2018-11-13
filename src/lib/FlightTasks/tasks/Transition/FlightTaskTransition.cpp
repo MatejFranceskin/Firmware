@@ -1,6 +1,6 @@
 /****************************************************************************
  *
- *   Copyright (c) 2012-2015 PX4 Development Team. All rights reserved.
+ *   Copyright (c) 2018 PX4 Development Team. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -32,34 +32,35 @@
  ****************************************************************************/
 
 /**
- * @file drv_irlock.h
- *
- * IR-Lock device API
- **/
+ * @file FlightTaskTranstion.cpp
+ */
 
-#pragma once
+#include "FlightTaskTransition.hpp"
 
-#include <stdint.h>
-#include <sys/ioctl.h>
+bool FlightTaskTransition::updateInitialize()
+{
+	return FlightTask::updateInitialize();
+}
 
-#include "drv_sensor.h" // include sensor driver interfaces
+bool FlightTaskTransition::activate()
+{
+	// transition at the current altitude and current yaw at the time of activation
+	// it would be better to use the last setpoint from the previous running flighttask but that interface
+	// is not available
+	_transition_altitude = _position(2);
+	_transition_yaw = _yaw;
+	return FlightTask::activate();
+}
 
-#define IRLOCK_BASE_DEVICE_PATH	"/dev/irlock"
-#define IRLOCK0_DEVICE_PATH	"/dev/irlock0"
+bool FlightTaskTransition::update()
+{
+	// level wings during the transition, altitude should be controlled
+	_thrust_setpoint(0) = _thrust_setpoint(1) = 0.0f;
+	_thrust_setpoint(2) = NAN;
+	_position_setpoint *= NAN;
+	_velocity_setpoint *= NAN;
+	_position_setpoint(2) = _transition_altitude;
 
-#define IRLOCK_OBJECTS_MAX	5	/** up to 5 objects can be detected/reported **/
-
-struct irlock_target_s {
-	uint16_t signature;	/** target signature **/
-	float pos_x;	/** x-axis distance from center of image to center of target in units of tan(theta) **/
-	float pos_y;	/** y-axis distance from center of image to center of target in units of tan(theta) **/
-	float size_x;	/** size of target along x-axis in units of tan(theta) **/
-	float size_y;	/** size of target along y-axis in units of tan(theta) **/
-};
-
-/** irlock_s structure returned from read calls **/
-struct irlock_s {
-	uint64_t timestamp; /** microseconds since system start **/
-	uint8_t num_targets;
-	struct irlock_target_s targets[IRLOCK_OBJECTS_MAX];
-};
+	_yaw_setpoint = _transition_yaw;
+	return true;
+}

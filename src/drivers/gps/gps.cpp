@@ -49,6 +49,7 @@
 #endif
 
 #include <fcntl.h>
+#include <sys/ioctl.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <stdint.h>
@@ -73,7 +74,6 @@
 #include <matrix/math.hpp>
 #include <systemlib/err.h>
 #include <parameters/param.h>
-#include <drivers/drv_gps.h>
 #include <uORB/uORB.h>
 #include <uORB/topics/vehicle_gps_position.h>
 #include <uORB/topics/satellite_info.h>
@@ -87,9 +87,20 @@
 #include "devices/src/ashtech.h"
 #include "devices/src/sbf.h"
 
+#ifdef __PX4_LINUX
+#include <linux/spi/spidev.h>
+#endif /* __PX4_LINUX */
+
 #define TIMEOUT_5HZ 500
 #define RATE_MEASUREMENT_PERIOD 5000000
 
+typedef enum {
+	GPS_DRIVER_MODE_NONE = 0,
+	GPS_DRIVER_MODE_UBX,
+	GPS_DRIVER_MODE_MTK,
+	GPS_DRIVER_MODE_ASHTECH,
+	GPS_DRIVER_MODE_SBF
+} gps_driver_mode_t;
 
 /* struct for dynamic allocation of satellite info data */
 struct GPS_Sat_Info {
@@ -278,6 +289,7 @@ GPS::GPS(const char *path, gps_driver_mode_t mode, GPSHelper::Interface interfac
 	_port[sizeof(_port) - 1] = '\0';
 
 	_report_gps_pos.heading = NAN;
+	_report_gps_pos.heading_offset = NAN;
 
 	/* create satellite info data object if requested */
 	if (enable_sat_info) {
@@ -617,6 +629,27 @@ GPS::run()
 			PX4_ERR("GPS: failed to open serial port: %s err: %d", _port, errno);
 			return;
 		}
+
+#ifdef __PX4_LINUX
+
+		if (_interface == GPSHelper::Interface::SPI) {
+			int spi_speed = 1000000; // make sure the bus speed is not too high (required on RPi)
+			int status_value = ioctl(_serial_fd, SPI_IOC_WR_MAX_SPEED_HZ, &spi_speed);
+
+			if (status_value < 0) {
+				PX4_ERR("SPI_IOC_WR_MAX_SPEED_HZ failed for %s (%d)", _port, errno);
+				return;
+			}
+
+			status_value = ioctl(_serial_fd, SPI_IOC_RD_MAX_SPEED_HZ, &spi_speed);
+
+			if (status_value < 0) {
+				PX4_ERR("SPI_IOC_RD_MAX_SPEED_HZ failed for %s (%d)", _port, errno);
+				return;
+			}
+		}
+
+#endif /* __PX4_LINUX */
 	}
 
 	param_t handle = param_find("GPS_YAW_OFFSET");
@@ -665,6 +698,7 @@ GPS::run()
 			_report_gps_pos.vel_ned_valid = true;
 			_report_gps_pos.satellites_used = 10;
 			_report_gps_pos.heading = NAN;
+			_report_gps_pos.heading_offset = NAN;
 
 			/* no time and satellite information simulated */
 
@@ -698,7 +732,7 @@ GPS::run()
 				break;
 
 			case GPS_DRIVER_MODE_SBF:
-				_helper = new GPSDriverSBF(_interface, &GPS::callback, this, &_report_gps_pos, _p_report_sat_info,
+				_helper = new GPSDriverSBF(&GPS::callback, this, &_report_gps_pos, _p_report_sat_info,
 							   gps_dynmodel);
 				break;
 
@@ -713,6 +747,7 @@ GPS::run()
 				/* reset report */
 				memset(&_report_gps_pos, 0, sizeof(_report_gps_pos));
 				_report_gps_pos.heading = NAN;
+				_report_gps_pos.heading_offset = heading_offset;
 
 				if (_mode == GPS_DRIVER_MODE_UBX) {
 
@@ -866,6 +901,10 @@ GPS::print_status()
 			PX4_INFO("protocol: ASHTECH");
 			break;
 
+		case GPS_DRIVER_MODE_SBF:
+			PX4_INFO("protocol: SBF");
+			break;
+
 		default:
 			break;
 		}
@@ -965,6 +1004,7 @@ GPS::custom_command(int argc, char *argv[])
 	GPS *_instance = get_instance();
 
 	bool res = false;
+
 	if (_instance && argc == 2 && !strcmp(argv[0], "reset")) {
 
 		if (!strcmp(argv[1], "hot")) {

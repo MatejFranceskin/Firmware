@@ -141,8 +141,15 @@ __BEGIN_DECLS
 __EXPORT extern const char *__px4_log_level_str[_PX4_LOG_LEVEL_PANIC + 1];
 __EXPORT extern const char *__px4_log_level_color[_PX4_LOG_LEVEL_PANIC + 1];
 __EXPORT extern void px4_backtrace(void);
-__EXPORT void px4_log_modulename(int level, const char *moduleName, const char *fmt, ...);
-__EXPORT void px4_log_raw(int level, const char *fmt, ...);
+__EXPORT void px4_log_modulename(int level, const char *moduleName, const char *fmt, ...)
+__attribute__((format(printf, 3, 4)));
+__EXPORT void px4_log_raw(int level, const char *fmt, ...)
+__attribute__((format(printf, 2, 3)));
+
+#if __GNUC__
+// Allow empty format strings.
+#pragma GCC diagnostic ignored "-Wformat-zero-length"
+#endif
 
 __END_DECLS
 
@@ -160,11 +167,6 @@ __END_DECLS
  ****************************************************************************/
 #define __px4__log_printcond(cond, ...)	    if (cond) printf(__VA_ARGS__)
 #define __px4__log_printline(level, ...)    printf(__VA_ARGS__)
-
-
-#ifndef MODULE_NAME
-#define MODULE_NAME "Unknown"
-#endif
 
 #define __px4__log_timestamp_fmt	"%-10" PRIu64 " "
 #define __px4__log_timestamp_arg 	,hrt_absolute_time()

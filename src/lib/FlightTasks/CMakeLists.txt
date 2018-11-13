@@ -56,11 +56,14 @@ list(APPEND flight_tasks_all
 	ManualAltitudeSmooth
 	ManualPosition
 	ManualPositionSmooth
+	ManualPositionSmoothVel
 	Sport
 	AutoLine
+	AutoLineSmoothVel
 	AutoFollowMe
 	Offboard
 	Failsafe
+	Transition
 	${flight_tasks_to_add}
 )
 
