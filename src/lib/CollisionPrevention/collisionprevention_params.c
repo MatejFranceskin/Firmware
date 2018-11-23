@@ -1,6 +1,6 @@
 /****************************************************************************
  *
- *   Copyright (c) 2013 PX4 Development Team. All rights reserved.
+ *   Copyright (c) 2018 PX4 Development Team. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -32,51 +32,21 @@
  ****************************************************************************/
 
 /**
- * @file sitl_led.c
+ * @file collisionprevention_params.c
  *
- * sitl LED backend.
+ * Parameters defined by the collisionprevention lib.
+ *
+ * @author Tanja Baumann <tanja@auterion.com>
  */
 
-#include <px4_config.h>
-#include <px4_log.h>
-#include <stdbool.h>
-#include <systemlib/px4_macros.h>
-
-__BEGIN_DECLS
-extern void led_init(void);
-extern void led_on(int led);
-extern void led_off(int led);
-extern void led_toggle(int led);
-__END_DECLS
-
-static bool _led_state[] = { false, false, false, false };
-
-__EXPORT void led_init()
-{
-	PX4_DEBUG("LED_INIT");
-}
-
-__EXPORT void led_on(int led)
-{
-	if ((unsigned int)led < arraySize(_led_state)) {
-		PX4_DEBUG("LED%d_ON", led);
-		_led_state[led] = true;
-	}
-}
-
-__EXPORT void led_off(int led)
-{
-	if ((unsigned int)led < arraySize(_led_state)) {
-		PX4_DEBUG("LED%d_OFF", led);
-		_led_state[led] = false;
-	}
-}
-
-__EXPORT void led_toggle(int led)
-{
-	if ((unsigned int)led < arraySize(_led_state)) {
-		_led_state[led] = !_led_state[led];
-		PX4_DEBUG("LED%d_TOGGLE: %s", led, _led_state[led] ? "ON" : "OFF");
-
-	}
-}
+/**
+ * Minimum distance the vehicle should keep to all obstacles
+ *
+ * Only used in Position mode. Collision avoidace is disabled by setting this parameter to a negative value
+ *
+ * @min -1
+ * @max 15
+ * @unit meters
+ * @group Multicopter Position Control
+ */
+PARAM_DEFINE_FLOAT(MPC_COL_PREV_D, -1.0f);
