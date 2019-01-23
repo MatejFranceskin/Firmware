@@ -86,6 +86,7 @@
 #include "devices/src/ubx.h"
 #include "devices/src/mtk.h"
 #include "devices/src/ashtech.h"
+#include "devices/src/sbf.h"
 
 #ifdef __PX4_LINUX
 #include <linux/spi/spidev.h>
@@ -98,7 +99,8 @@ typedef enum {
 	GPS_DRIVER_MODE_NONE = 0,
 	GPS_DRIVER_MODE_UBX,
 	GPS_DRIVER_MODE_MTK,
-	GPS_DRIVER_MODE_ASHTECH
+	GPS_DRIVER_MODE_ASHTECH,
+	GPS_DRIVER_MODE_SBF
 } gps_driver_mode_t;
 
 /* struct for dynamic allocation of satellite info data */
@@ -648,11 +650,11 @@ GPS::run()
 		heading_offset = matrix::wrap_pi(math::radians(heading_offset));
 	}
 
-	int32_t gps_ubx_dynmodel = 7; // default to 7: airborne with <2g acceleration
-	handle = param_find("GPS_UBX_DYNMODEL");
+	int32_t gps_dynmodel = 7; // default to 7: airborne with <2g acceleration
+	handle = param_find("GPS_DYNMODEL");
 
 	if (handle != PARAM_INVALID) {
-		param_get(handle, &gps_ubx_dynmodel);
+		param_get(handle, &gps_dynmodel);
 	}
 
 	_orb_inject_data_fd = orb_subscribe(ORB_ID(gps_inject_data));
@@ -690,7 +692,6 @@ GPS::run()
 
 			/* no time and satellite information simulated */
 
-
 			publish();
 
 			px4_usleep(200000);
@@ -709,7 +710,7 @@ GPS::run()
 			/* FALLTHROUGH */
 			case GPS_DRIVER_MODE_UBX:
 				_helper = new GPSDriverUBX(_interface, &GPS::callback, this, &_report_gps_pos, _p_report_sat_info,
-							   gps_ubx_dynmodel);
+							   gps_dynmodel);
 				break;
 
 			case GPS_DRIVER_MODE_MTK:
@@ -718,6 +719,11 @@ GPS::run()
 
 			case GPS_DRIVER_MODE_ASHTECH:
 				_helper = new GPSDriverAshtech(&GPS::callback, this, &_report_gps_pos, _p_report_sat_info, heading_offset);
+				break;
+
+			case GPS_DRIVER_MODE_SBF:
+				_helper = new GPSDriverSBF(&GPS::callback, this, &_report_gps_pos, _p_report_sat_info,
+							   gps_dynmodel);
 				break;
 
 			default:
@@ -774,6 +780,10 @@ GPS::run()
 //							mode_str = "UBX";
 //							break;
 //
+//						case GPS_DRIVER_MODE_SBF:
+//							mode_str = "SBF";
+//							break;
+//
 //						case GPS_DRIVER_MODE_MTK:
 //							mode_str = "MTK";
 //							break;
@@ -801,6 +811,10 @@ GPS::run()
 			if (_mode_auto) {
 				switch (_mode) {
 				case GPS_DRIVER_MODE_UBX:
+					_mode = GPS_DRIVER_MODE_SBF;
+					break;
+
+				case GPS_DRIVER_MODE_SBF:
 					_mode = GPS_DRIVER_MODE_MTK;
 					break;
 
@@ -875,6 +889,10 @@ GPS::print_status()
 
 		case GPS_DRIVER_MODE_ASHTECH:
 			PX4_INFO("protocol: ASHTECH");
+			break;
+
+		case GPS_DRIVER_MODE_SBF:
+			PX4_INFO("protocol: SBF");
 			break;
 
 		default:
@@ -976,7 +994,7 @@ gps start -d /dev/ttyS3 -e /dev/ttyS4
 	PRINT_MODULE_USAGE_PARAM_FLAG('s', "Enable publication of satellite info", true);
 
 	PRINT_MODULE_USAGE_PARAM_STRING('i', "uart", "spi|uart", "GPS interface", true);
-	PRINT_MODULE_USAGE_PARAM_STRING('p', nullptr, "ubx|mtk|ash", "GPS Protocol (default=auto select)", true);
+	PRINT_MODULE_USAGE_PARAM_STRING('p', nullptr, "ubx|mtk|ash|sbf", "GPS Protocol (default=auto select)", true);
 
 	PRINT_MODULE_USAGE_DEFAULT_COMMANDS();
 
@@ -1106,6 +1124,9 @@ GPS *GPS::instantiate(int argc, char *argv[], Instance instance)
 
 			} else if (!strcmp(myoptarg, "ash")) {
 				mode = GPS_DRIVER_MODE_ASHTECH;
+
+			} else if (!strcmp(myoptarg, "sbf")) {
+				mode = GPS_DRIVER_MODE_SBF;
 
 			} else {
 				PX4_ERR("unknown interface: %s", myoptarg);

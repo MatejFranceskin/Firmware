@@ -45,9 +45,9 @@
 PARAM_DEFINE_INT32(GPS_DUMP_COMM, 0);
 
 /**
- * u-blox GPS dynamic platform model
+ * GPS dynamic platform model
  *
- * u-blox receivers support different dynamic platform models to adjust the navigation engine to
+ * u-blox & Septentrio receivers support different dynamic platform models to adjust the navigation engine to
  * the expected application environment.
  *
  * @min 0
@@ -62,7 +62,7 @@ PARAM_DEFINE_INT32(GPS_DUMP_COMM, 0);
  *
  * @group GPS
  */
-PARAM_DEFINE_INT32(GPS_UBX_DYNMODEL, 7);
+PARAM_DEFINE_INT32(GPS_DYNMODEL, 7);
 
 
 /**
